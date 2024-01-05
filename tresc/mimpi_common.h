@@ -55,7 +55,9 @@ _Noreturn extern void fatal(const char* fmt, ...);
 /////////////////////////////////////////////
 // Put your declarations here
 
-
+// We can only use descriptors in [20, 1023]
+#define MY_STDIN 20
+#define MY_STDOUT 21
 
 
 

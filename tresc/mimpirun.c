@@ -12,11 +12,11 @@ int main(int argc, char *argv[])
 
     // We make env var to store process indexes, and env var to store how many
     // processes we run. 
-    char *NBR_PROC = "NBR_PROC";
+    char *NBR_PROC = "MIMPI_NBR_PROC";
     putenv(NBR_PROC);
     setenv(NBR_PROC, argv[1], 1);
 
-    char *PROC_RANK = "PROC_RANK";
+    char *PROC_RANK = "MIMPI_PROC_RANK";
     putenv(PROC_RANK);
     
     // We want all argv arguments starting from argv[2] where name of programme
