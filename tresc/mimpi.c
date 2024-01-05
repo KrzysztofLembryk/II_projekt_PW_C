@@ -9,21 +9,36 @@
 void MIMPI_Init(bool enable_deadlock_detection) {
     channels_init();
 
-    TODO
+    //TODO
 }
 
 void MIMPI_Finalize() {
-    TODO
+    //TODO
 
     channels_finalize();
 }
 
 int MIMPI_World_size() {
-    TODO
+    static bool init = false;
+    static int nbr_of_proc;
+    if(!init)
+    {
+        nbr_of_proc = atoi(getenv("NBR_PROC"));
+        init = true;
+    }
+    return nbr_of_proc;
 }
 
 int MIMPI_World_rank() {
-    TODO
+    static bool init = false;
+    static int my_rank;
+
+    if(!init)
+    {
+        my_rank = atoi(getenv("PROC_RANK"));
+        init = true;
+    }
+    return my_rank;
 }
 
 MIMPI_Retcode MIMPI_Send(
@@ -32,7 +47,7 @@ MIMPI_Retcode MIMPI_Send(
     int destination,
     int tag
 ) {
-    TODO
+    //TODO
 }
 
 MIMPI_Retcode MIMPI_Recv(
@@ -41,11 +56,11 @@ MIMPI_Retcode MIMPI_Recv(
     int source,
     int tag
 ) {
-    TODO
+    //TODO
 }
 
 MIMPI_Retcode MIMPI_Barrier() {
-    TODO
+    //TODO
 }
 
 MIMPI_Retcode MIMPI_Bcast(
@@ -53,7 +68,7 @@ MIMPI_Retcode MIMPI_Bcast(
     int count,
     int root
 ) {
-    TODO
+    //TODO
 }
 
 MIMPI_Retcode MIMPI_Reduce(
@@ -63,5 +78,5 @@ MIMPI_Retcode MIMPI_Reduce(
     MIMPI_Op op,
     int root
 ) {
-    TODO
+    //TODO
 }
