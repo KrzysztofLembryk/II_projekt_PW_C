@@ -11,13 +11,16 @@ int main(int argc, char *argv[])
         return -1;
 
     int nbr_of_copies_to_run = atoi(argv[1]);
-    const char *path = argv[2];
+    //const char *path = argv[2];
 
     // We need null terminated array, so size needs to be + 1
-    int rest_size = argc - 2 + 1;
-    char **rest_of_args = calloc(rest_size, sizeof(char *));
-
-    memcpy(rest_of_args, argv + 2, rest_size * sizeof(*rest_of_args));
+    //int rest_size = argc - 2 + 1;
+    //char **rest_of_args = calloc(rest_size, sizeof(char *));
+    
+    // We want all argv arguments starting from argv[2] where name of programme
+    // to exec is stored.
+    char **rest_of_args = &argv[2];
+    //memcpy(rest_of_args, argv + 2, rest_size * sizeof(*rest_of_args));
 
     for (int i = 0; i < nbr_of_copies_to_run; i++)
     {
@@ -28,10 +31,11 @@ int main(int argc, char *argv[])
             ASSERT_SYS_OK(execvp(*rest_of_args, rest_of_args));
     }
 
-    if (nbr_of_copies_to_run != 0)
+    // We wait for every child.
+    for (int i = 0; i < nbr_of_copies_to_run; i++)
         ASSERT_SYS_OK(wait(NULL));
 
-    free(rest_of_args);
+    //free(rest_of_args);
 
     return 0;
     // TODO
