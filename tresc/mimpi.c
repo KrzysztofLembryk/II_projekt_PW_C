@@ -97,28 +97,23 @@ void close_all_left_dscrptrs()
 {
     int nbr_proc = MIMPI_World_size();
     int my_rank = MIMPI_World_rank();
-    // printf("close all left dscrpt, my rank: %d\n", my_rank);
     int curr_read_dscrpt;
     int i;
 
     for (int curr_proc = 0; curr_proc < nbr_proc; curr_proc++)
     {
         curr_read_dscrpt = OFFSET + curr_proc * 2 * nbr_proc;
-        // printf("curr dscrpt: %d\n", curr_read_dscrpt);
 
         if (curr_proc == my_rank)
         {
-            // printf("curr_proc = my_rank = %d\n", curr_proc);
             i = 0;
             while (i < nbr_proc)
             {
                 // In my_rank process we left opened all write ends of pipes, so
                 // we need to close them now.
                 if (curr_proc != i)
-                {
-                    // printf("closing : %d\n", curr_read_dscrpt + 1);
                     close(curr_read_dscrpt + 1);
-                }
+                
                 i++;
                 curr_read_dscrpt += 2;
             }
@@ -127,9 +122,8 @@ void close_all_left_dscrptrs()
         {
             // We need to close only reading ends of pipes at our indexes, cause
             // all other ends are closed.
-
             curr_read_dscrpt += 2 * my_rank;
-            // printf("closing read dscrpt : %d\n", curr_read_dscrpt);
+            
             close(curr_read_dscrpt);
         }
     }
@@ -139,15 +133,11 @@ void MIMPI_Init(bool enable_deadlock_detection)
 {
     channels_init();
     close_redundant_dscrpt();
-
-    // TODO
 }
 
 void MIMPI_Finalize()
 {
-    // TODO
     close_all_left_dscrptrs();
-
     channels_finalize();
 }
 
@@ -178,7 +168,7 @@ int MIMPI_World_rank()
 }
 
 /**
- * We see data array of count bytes, so we need to cast void ptr to unint8_t
+ * 
  */
 MIMPI_Retcode MIMPI_Send(
     void const *data,
@@ -189,6 +179,7 @@ MIMPI_Retcode MIMPI_Send(
     if (destination == MIMPI_World_rank())
         return MIMPI_ERROR_ATTEMPTED_SELF_OP;
 
+    // We want array of bytes, so we need to cast void ptr to unint8_t.
     uint8_t *data_to_send = (uint8_t *)data;
 
     printf("data to send: ");
@@ -199,11 +190,18 @@ MIMPI_Retcode MIMPI_Send(
     int my_rank = MIMPI_World_rank();
     int nbr_proc = MIMPI_World_size();
 
+    // We calc first our descryptor, allowed dscrp for our use are in [20, 1023]
+    // Each process has continuous part of [20, 1023] for its descryptors, each
+    // such part is of size = 2*nbr_proc (we need read and write dscrptrs).
     int MY_STARTING_DSCRPT = OFFSET + my_rank * 2 * nbr_proc;
+
+    // Read dscrpt are firs ones, write are second ones, so MY_STARTING_DSCRPT
+    // is a first read dscrpt, thus each time we find read dscrpt and to get
+    // write dscrpt we need to add 1.
     int MY_STDOUT = MY_STARTING_DSCRPT + 2 * destination + 1;
 
     chsend(MY_STDOUT, data_to_send, count);
-    // TODO
+
     return MIMPI_SUCCESS;
 }
 
@@ -219,10 +217,12 @@ MIMPI_Retcode MIMPI_Recv(
     int my_rank = MIMPI_World_rank();
     int nbr_proc = MIMPI_World_size();
 
+    // We read data from source process' pipe, so we need to find where it 
+    // starts, and then our read dscrpt in found block of source proc dscrptrs.
     int SRC_STARTING_DSCRPT = OFFSET + source * 2 * nbr_proc;
-    int DEST_READ_DSCRPT = SRC_STARTING_DSCRPT + 2 * my_rank;
-    
-    chrecv(DEST_READ_DSCRPT, data, count);
+    int MY_READ_DSCRPT_IN_SRC = SRC_STARTING_DSCRPT + 2 * my_rank;
+
+    chrecv(MY_READ_DSCRPT_IN_SRC, data, count);
 
     // uint8_t *received_data = (uint8_t*)data;
 
