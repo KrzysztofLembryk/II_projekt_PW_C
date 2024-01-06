@@ -35,9 +35,16 @@ void close_redundant_dscrpt(Data *data)
     while(i < nbr_proc)
     {
         if(curr_read_dscrpt == data->MY_STDIN)
-            close(data->MY_STDIN);
+        {
+            printf("closing my stdin: %d\n", curr_read_dscrpt);
+            close(curr_read_dscrpt);
+        }
         else
+        {
+            printf("closing: %d\n", curr_read_dscrpt + 1);
             close(curr_read_dscrpt + 1);
+        }
+            
         
         i++;
         curr_read_dscrpt += 2;
@@ -49,7 +56,7 @@ void MIMPI_Init(bool enable_deadlock_detection)
     channels_init();
     data_init(&mimpi_data);
     close_redundant_dscrpt(&mimpi_data);
-    
+
     // TODO
 }
 
@@ -92,6 +99,7 @@ MIMPI_Retcode MIMPI_Send(
     int destination,
     int tag)
 {
+
     // TODO
 }
 
