@@ -33,8 +33,8 @@ void close_redundant_dscrpt()
     int curr_proc = 0;
     int curr_read_dscrpt = OFFSET;
     int curr_rank;
-
-    // printf("my rank: %d\n", my_rank);
+    printf("\nMIMPI INIT\n");
+    printf("\n-----MY RANK: %d-----\n", my_rank);
 
     while (curr_proc < nbr_proc)
     {
@@ -43,7 +43,7 @@ void close_redundant_dscrpt()
 
         if (curr_proc == my_rank)
         {
-            // printf("curr_proc = my_rank, %d = %d\n", my_rank, curr_proc);
+            printf("curr_proc = my_rank = %d\n", my_rank);
             //  When curr_proc is equal to our rank, we close only reading ends
             //  of our pipes, since we will use them to write, and others will
             //  read from them.
@@ -51,36 +51,37 @@ void close_redundant_dscrpt()
             {
                 if (curr_proc == curr_rank)
                 {
-                    // printf("closing %d, %d\n",
-                    //     curr_read_dscrpt, curr_read_dscrpt + 1);
+                    printf("closing %d, %d\n",
+                         curr_read_dscrpt, curr_read_dscrpt + 1);
                     close(curr_read_dscrpt);
                     close(curr_read_dscrpt + 1);
                 }
                 else
                 {
-                    // printf("closing read %d\n", curr_read_dscrpt);
+                    printf("closing read %d\n", curr_read_dscrpt);
                     close(curr_read_dscrpt);
                 }
                 curr_rank++;
                 curr_read_dscrpt += 2;
             }
         }
-        else
+        else // curr_proc != my_rank
         {
+            printf("curr_proc != my_rank\n");
             while (curr_rank < nbr_proc)
             {
                 // If curr_proc is not us, we close all pipes except our pipe
-                // in curr_proc.
+                // in curr_proc. In our pipe we close read end of pipe.
                 if (my_rank != curr_rank)
                 {
-                    // printf("closing %d, %d\n",
-                    //     curr_read_dscrpt, curr_read_dscrpt + 1);
+                    printf("closing %d, %d\n",
+                         curr_read_dscrpt, curr_read_dscrpt + 1);
                     close(curr_read_dscrpt);
                     close(curr_read_dscrpt + 1);
                 }
                 else
                 {
-                    // printf("closing write %d\n", curr_read_dscrpt + 1);
+                    printf("closing write %d\n", curr_read_dscrpt + 1);
                     close(curr_read_dscrpt + 1);
                 }
                 curr_rank++;
@@ -89,7 +90,7 @@ void close_redundant_dscrpt()
         }
 
         curr_proc++;
-        // printf("---------------\n\n");
+        printf("---------------\n");
     }
 }
 
@@ -99,7 +100,7 @@ void close_all_left_dscrptrs()
     int my_rank = MIMPI_World_rank();
     int curr_read_dscrpt;
     int i;
-
+    printf("MIMPI FINALIZE\n");
     for (int curr_proc = 0; curr_proc < nbr_proc; curr_proc++)
     {
         curr_read_dscrpt = OFFSET + curr_proc * 2 * nbr_proc;
@@ -107,12 +108,17 @@ void close_all_left_dscrptrs()
         if (curr_proc == my_rank)
         {
             i = 0;
+            printf("curr_proc == my_rank\n");
             while (i < nbr_proc)
             {
-                // In my_rank process we left opened all write ends of pipes, so
-                // we need to close them now.
-                if (curr_proc != i)
+                // In my_rank process we left opened all write ends of pipes, 
+                // so we need to close them now.
+                if (i != my_rank)
+                {
+                    printf("closing read: %d\n", curr_read_dscrpt + 1);
                     close(curr_read_dscrpt + 1);
+                }
+                    
                 
                 i++;
                 curr_read_dscrpt += 2;
@@ -123,7 +129,7 @@ void close_all_left_dscrptrs()
             // We need to close only reading ends of pipes at our indexes, cause
             // all other ends are closed.
             curr_read_dscrpt += 2 * my_rank;
-            
+            printf("closing %d\n", curr_read_dscrpt);
             close(curr_read_dscrpt);
         }
     }
@@ -178,6 +184,8 @@ MIMPI_Retcode MIMPI_Send(
 {
     if (destination == MIMPI_World_rank())
         return MIMPI_ERROR_ATTEMPTED_SELF_OP;
+    if(destination >= MIMPI_World_size() || destination < 0)
+        return MIMPI_ERROR_NO_SUCH_RANK;
 
     // We want array of bytes, so we need to cast void ptr to unint8_t.
     uint8_t *data_to_send = (uint8_t *)data;
@@ -200,7 +208,10 @@ MIMPI_Retcode MIMPI_Send(
     // write dscrpt we need to add 1.
     int MY_STDOUT = MY_STARTING_DSCRPT + 2 * destination + 1;
 
-    chsend(MY_STDOUT, data_to_send, count);
+    int send_ret_code = chsend(MY_STDOUT, data_to_send, count);
+    printf("chsend ret code %d\n", send_ret_code);
+    if(send_ret_code == -1)
+        return MIMPI_ERROR_REMOTE_FINISHED;
 
     return MIMPI_SUCCESS;
 }
@@ -213,6 +224,8 @@ MIMPI_Retcode MIMPI_Recv(
 {
     if (source == MIMPI_World_rank())
         return MIMPI_ERROR_ATTEMPTED_SELF_OP;
+    if(source >= MIMPI_World_size() || source < 0)
+        return MIMPI_ERROR_NO_SUCH_RANK;
 
     int my_rank = MIMPI_World_rank();
     int nbr_proc = MIMPI_World_size();
@@ -222,7 +235,10 @@ MIMPI_Retcode MIMPI_Recv(
     int SRC_STARTING_DSCRPT = OFFSET + source * 2 * nbr_proc;
     int MY_READ_DSCRPT_IN_SRC = SRC_STARTING_DSCRPT + 2 * my_rank;
 
-    chrecv(MY_READ_DSCRPT_IN_SRC, data, count);
+    int receive_ret_code = chrecv(MY_READ_DSCRPT_IN_SRC, data, count);
+
+    if(receive_ret_code == 0)
+        return MIMPI_ERROR_REMOTE_FINISHED;
 
     // uint8_t *received_data = (uint8_t*)data;
 

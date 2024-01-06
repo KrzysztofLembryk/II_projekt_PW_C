@@ -81,7 +81,7 @@ int channel(int pipefd[2])
 
 void channels_init() {
     signal(SIGPIPE, SIG_IGN);
-
+    
     pthread_mutexattr_t attr;
     ASSERT_ZERO(pthread_mutexattr_init(&attr));
     ASSERT_ZERO(pthread_mutex_init(&mutex, &attr));

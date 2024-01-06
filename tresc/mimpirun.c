@@ -43,7 +43,7 @@ void prepare_pipes(int nbr_of_proc)
 
         for(int j = 0; j < 2 * nbr_of_proc; j++)
         {
-            //printf("Descriptor: %d\n", start_dscrpt + j);
+            printf("Descriptor: %d\n", start_dscrpt + j);
             
             if(j % 2 == 0)
             {
@@ -53,12 +53,11 @@ void prepare_pipes(int nbr_of_proc)
             else
             {
                 dup2(file_dscrpt[WRITE_DSCR], start_dscrpt + j);
-
                 close(file_dscrpt[READ_DSCR]);
                 close(file_dscrpt[WRITE_DSCR]);
             }  
         }
-        //printf("---------------\n");
+        printf("---------------\n");
     }
 }
 
