@@ -16,8 +16,8 @@ int main(int argc, char *argv[])
     
     int my_rank = MIMPI_World_rank();
 
-    if(my_rank == 0)
-        sleep(2);
+    //if(my_rank == 0)
+    //    sleep(2);
 
     MIMPI_Init(false);
     
@@ -28,7 +28,7 @@ int main(int argc, char *argv[])
     
     if(my_rank == 0)
     {
-        sleep(2);
+        //sleep(2);
         MIMPI_Retcode ret_send = MIMPI_Send(data, 4, 1, 1);
         if(ret_send != MIMPI_SUCCESS)
             printf("I wanted to send but no-one waited\n");
