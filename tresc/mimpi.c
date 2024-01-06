@@ -13,17 +13,43 @@ typedef struct Data
     
 } Data;
 
+Data mimpi_data;
+
 void data_init(Data *data)
 {
-    data->MY_STDIN = OFFSET + MIMPI_World_rank() * 4;
-    data->MY_STDOUT = data->MY_STDIN + 3;
+    data->MY_STDIN = OFFSET + MIMPI_World_rank() * 2;
+    data->MY_STDOUT = data->MY_STDIN + 1;
 }
 
+/**
+ * We close all writing descrpt to other processes, we only need to read what
+ * they wrote. We write only to our pipe, so that each process knows from whom
+ * it receives data.
+*/ 
+void close_redundant_dscrpt(Data *data)
+{
+    int nbr_proc = MIMPI_World_size();
+    int i = 0;
+    int curr_read_dscrpt = OFFSET;
+
+    while(i < nbr_proc)
+    {
+        if(curr_read_dscrpt == data->MY_STDIN)
+            close(data->MY_STDIN);
+        else
+            close(curr_read_dscrpt + 1);
+        
+        i++;
+        curr_read_dscrpt += 2;
+    }
+}
 
 void MIMPI_Init(bool enable_deadlock_detection)
 {
     channels_init();
-
+    data_init(&mimpi_data);
+    close_redundant_dscrpt(&mimpi_data);
+    
     // TODO
 }
 
