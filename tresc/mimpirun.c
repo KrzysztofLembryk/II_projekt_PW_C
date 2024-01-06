@@ -43,7 +43,7 @@ void prepare_pipes(int nbr_of_proc)
 
         for(int j = 0; j < 2 * nbr_of_proc; j++)
         {
-            printf("Descriptor: %d\n", start_dscrpt + j);
+            //printf("Descriptor: %d\n", start_dscrpt + j);
             
             if(j % 2 == 0)
             {
@@ -58,7 +58,7 @@ void prepare_pipes(int nbr_of_proc)
                 close(file_dscrpt[WRITE_DSCR]);
             }  
         }
-        printf("---------------\n");
+        //printf("---------------\n");
     }
 }
 
@@ -111,5 +111,4 @@ int main(int argc, char *argv[])
         ASSERT_SYS_OK(wait(NULL));
 
     return 0;
-    // TODO
 }
