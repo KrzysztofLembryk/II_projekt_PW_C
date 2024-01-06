@@ -6,6 +6,20 @@
 #include "mimpi.h"
 #include "mimpi_common.h"
 
+typedef struct Data
+{
+    int MY_STDIN;
+    int MY_STDOUT;
+    
+} Data;
+
+void data_init(Data *data)
+{
+    data->MY_STDIN = OFFSET + MIMPI_World_rank() * 4;
+    data->MY_STDOUT = data->MY_STDIN + 3;
+}
+
+
 void MIMPI_Init(bool enable_deadlock_detection)
 {
     channels_init();
@@ -27,7 +41,7 @@ int MIMPI_World_size()
 
     if (!init)
     {
-        nbr_of_proc = atoi(getenv("MIMPI_NBR_PROC"));
+        nbr_of_proc = atoi(getenv(NBR_PROC));
         init = true;
     }
     return nbr_of_proc;
@@ -40,7 +54,7 @@ int MIMPI_World_rank()
 
     if (!init)
     {
-        my_rank = atoi(getenv("MIMPI_PROC_RANK"));
+        my_rank = atoi(getenv(PROC_RANK));
         init = true;
     }
     return my_rank;

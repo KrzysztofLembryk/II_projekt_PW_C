@@ -56,9 +56,9 @@ _Noreturn extern void fatal(const char* fmt, ...);
 // Put your declarations here
 
 // We can only use descriptors in [20, 1023]
-#define MY_STDIN 20
-#define MY_STDOUT 21
-
+#define OFFSET 20
+#define NBR_PROC "MIMPI_NBR_PROC"
+#define PROC_RANK "MIMPI_PROC_RANK"
 
 
 #endif // MIMPI_COMMON_H
