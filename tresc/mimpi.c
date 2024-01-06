@@ -6,6 +6,7 @@
 #include "mimpi.h"
 #include "mimpi_common.h"
 
+
 typedef struct Data
 {
     int MY_STDIN;
@@ -36,12 +37,12 @@ void close_redundant_dscrpt(Data *data)
     {
         if(curr_read_dscrpt == data->MY_STDIN)
         {
-            printf("closing my stdin: %d\n", curr_read_dscrpt);
+            //printf("closing my stdin: %d\n", curr_read_dscrpt);
             close(curr_read_dscrpt);
         }
         else
         {
-            printf("closing: %d\n", curr_read_dscrpt + 1);
+            //printf("closing: %d\n", curr_read_dscrpt + 1);
             close(curr_read_dscrpt + 1);
         }
             
@@ -93,14 +94,29 @@ int MIMPI_World_rank()
     return my_rank;
 }
 
+/**
+ * We see data array of count bytes, so we need to cast void ptr to unint8_t
+*/
 MIMPI_Retcode MIMPI_Send(
     void const *data,
     int count,
     int destination,
     int tag)
 {
+    if(destination == MIMPI_World_rank())
+        return MIMPI_ERROR_ATTEMPTED_SELF_OP;
 
+    uint8_t *data_to_send = (uint8_t*)data;
+
+    printf("data to send: ");
+    for(int i = 0; i < count; i++)
+        printf("%hhu ", data_to_send[i]);
+    printf("\n");
+    //int DEST_WRITE_DSCRPT = OFFSET + destination * 2 + 1;
+
+    chsend(mimpi_data.MY_STDOUT, data_to_send, count);
     // TODO
+    return MIMPI_SUCCESS;
 }
 
 MIMPI_Retcode MIMPI_Recv(
@@ -109,12 +125,24 @@ MIMPI_Retcode MIMPI_Recv(
     int source,
     int tag)
 {
+    if(source == MIMPI_World_rank())
+        return MIMPI_ERROR_ATTEMPTED_SELF_OP;
+    
+    int DEST_READ_DSCRPT = OFFSET + source * 2;
+    chrecv(DEST_READ_DSCRPT, data, count);
+
+    //uint8_t *received_data = (uint8_t*)data;
+
+    
+
+    return MIMPI_SUCCESS;
     // TODO
 }
 
 MIMPI_Retcode MIMPI_Barrier()
 {
     // TODO
+    return MIMPI_SUCCESS;
 }
 
 MIMPI_Retcode MIMPI_Bcast(
@@ -123,6 +151,7 @@ MIMPI_Retcode MIMPI_Bcast(
     int root)
 {
     // TODO
+    return MIMPI_SUCCESS;
 }
 
 MIMPI_Retcode MIMPI_Reduce(
@@ -133,4 +162,5 @@ MIMPI_Retcode MIMPI_Reduce(
     int root)
 {
     // TODO
+    return MIMPI_SUCCESS;
 }

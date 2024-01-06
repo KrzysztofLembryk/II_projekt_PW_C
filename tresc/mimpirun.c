@@ -6,45 +6,54 @@
 #include "channel.h"
 
 /**
- * In parent process, for each child process we create two pipes, one for 
- * writing and one for reading (we need to do it since we cannot create pipes 
- * in child processes, and when we want to read we need to close writing 
- * dscrptr, and closed dscrptr cannot be reopened).
- * We will use descriptors starting from 20. So child with idx = 0 will have
- * 20, 21 descriptors for itself. 
- * Where:
- * 20 - for reading 
- * 21 - for writing 
- * So child0 will need to close its 20 descriptor, because we will send info
- * only to other processes than us, so there is no need for us to use our 
- * reading end of pipe, we will use other processes reading ends to receive 
- * info from them. In this way we ensure that process knows from who it 
- * receives data.
- * Formula for descriptor for each child is: 20 + i * 2, where 20 is OFFSET.
+ * In parent process, for each child process we create 2 * nbr_proc pipes, one 
+ * for writing and one for reading for each present process (we need to do it 
+ * since we cannot create pipes in child processes, and when we want to read we 
+ * need to close writing dscrptr, and closed dscrptr cannot be reopened).
+ * We will use descriptors starting from 20. It will look like this:
+ * p1 ---- p1 : deleted
+ * p1 ----> p2
+ * p1 ----> p3
+ * p1 ----> p4
+ * p2 ----> p1
+ * p2 ---- p2 : deleted
+ *    ....
+ * When i.e. p2 wants to receive sth from p1, it knows that p1 will be 
+ * transfering data, so it finds p1 pipes, and goes to pipe that has its idx 
+ * and waits for input. When p1 wants to send sth to p2 it goes to pipes it has
+ * and finds pipe p1 ----> p2 and sends data. So p1 needs to close all reading 
+ * ends of its pipes because it will only send stuff via them, and close all 
+ * write ends of other processes' pipes.
+ * 
+ * Formula for dscrptr for proc of rank 0 for each child: 20 + i * 2 * nbr_proc,
+ *  where 20 is OFFSET.
 */
-void prepare_pipes(int nbr_od_proc)
+void prepare_pipes(int nbr_of_proc)
 {
     const int READ_DSCR = 0;
     const int WRITE_DSCR = 1;
     int start_dscrpt;
     int file_dscrpt[2];
 
-    for(int i = 0; i < nbr_od_proc; i++)
+    for(int i = 0; i < nbr_of_proc; i++)
     {
-        start_dscrpt = OFFSET + i * 2;
+        start_dscrpt = OFFSET + i * 2 * nbr_of_proc;
 
-        ASSERT_SYS_OK(channel(file_dscrpt));
+        //ASSERT_SYS_OK(channel(file_dscrpt));
 
-        for(int j = 0; j < 2; j++)
+        for(int j = 0; j < 2 * nbr_of_proc; j++)
         {
             printf("Descriptor: %d\n", start_dscrpt + j);
             
             if(j % 2 == 0)
+            {
+                ASSERT_SYS_OK(channel(file_dscrpt));
                 dup2(file_dscrpt[READ_DSCR], start_dscrpt + j);
+            }
             else
             {
                 dup2(file_dscrpt[WRITE_DSCR], start_dscrpt + j);
-                
+
                 close(file_dscrpt[READ_DSCR]);
                 close(file_dscrpt[WRITE_DSCR]);
             }  
