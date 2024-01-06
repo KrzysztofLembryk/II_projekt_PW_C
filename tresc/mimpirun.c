@@ -11,13 +11,16 @@
  * in child processes, and when we want to read we need to close writing 
  * dscrptr, and closed dscrptr cannot be reopened).
  * We will use descriptors starting from 20. So child with idx = 0 will have
- * 20, 21, 22, 23 descriptors for itself. 
+ * 20, 21 descriptors for itself. 
  * Where:
- * 20, 21 - for reading other children writng, 
- * 22, 23 - for writing to other children,
- * so child0 will need to close its 21 and 22 descriptors. Whereas other 
- * children will need to close 20 and 23. Formula for calculating first 
- * descriptor for each child is: 20 + i * 4, where 20 is OFFSET.
+ * 20 - for reading 
+ * 21 - for writing 
+ * So child0 will need to close its 20 descriptor, because we will send info
+ * only to other processes than us, so there is no need for us to use our 
+ * reading end of pipe, we will use other processes reading ends to receive 
+ * info from them. In this way we ensure that process knows from who it 
+ * receives data.
+ * Formula for descriptor for each child is: 20 + i * 2, where 20 is OFFSET.
 */
 void prepare_pipes(int nbr_od_proc)
 {
@@ -28,19 +31,20 @@ void prepare_pipes(int nbr_od_proc)
 
     for(int i = 0; i < nbr_od_proc; i++)
     {
-        start_dscrpt = OFFSET + i * 4;
+        start_dscrpt = OFFSET + i * 2;
 
-        for(int j = 0; j < 4; j++)
+        ASSERT_SYS_OK(channel(file_dscrpt));
+
+        for(int j = 0; j < 2; j++)
         {
             printf("Descriptor: %d\n", start_dscrpt + j);
-            if(j == 0 || j == 2)
-                ASSERT_SYS_OK(channel(file_dscrpt));
             
             if(j % 2 == 0)
                 dup2(file_dscrpt[READ_DSCR], start_dscrpt + j);
             else
             {
                 dup2(file_dscrpt[WRITE_DSCR], start_dscrpt + j);
+                
                 close(file_dscrpt[READ_DSCR]);
                 close(file_dscrpt[WRITE_DSCR]);
             }  
