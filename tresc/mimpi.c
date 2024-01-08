@@ -549,6 +549,24 @@ MIMPI_Retcode MIMPI_Recv(
     if (source >= MIMPI_World_size() || source < 0)
         return MIMPI_ERROR_NO_SUCH_RANK;
 
+    bool found_sought_data = false;
+
+    ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
+
+    QElem *elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, tag, count);
+
+    if(elem != NULL)
+    {
+        found_sought_data = true;
+        memcpy(data, elem->data, count * sizeof(elem->data));
+        free(elem->data);
+        free(elem);
+        mimpi_handler.wanted_count = -1;
+        mimpi_handler.wanted_rank = -1;
+        mimpi_handler.wanted_tag = -1;
+    }
+
+    ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
     // int my_rank = MIMPI_World_rank();
     // int nbr_proc = MIMPI_World_size();
     // int SRC_STARTING_DSCRPT = OFFSET + source * 2 * nbr_proc;
