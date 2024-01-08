@@ -60,6 +60,7 @@ _Noreturn extern void fatal(const char* fmt, ...);
 #define OFFSET 20
 #define NBR_PROC "MIMPI_NBR_PROC"
 #define PROC_RANK "MIMPI_PROC_RANK"
+#define PIPE_READ_SIZE 512
 
 
 #endif // MIMPI_COMMON_H

@@ -114,6 +114,7 @@ typedef struct Handler
     int nbr_of_proc;
 
     // proc_left_MIMPI - array to check when to ret MIMPI_ERROR_REMOTE_FINISHED
+    // or if our parent process is in mimpi finalize
     int *proc_left_MIMPI;
 
     // wanted_* parameters say which data parent proc wants to read
@@ -153,7 +154,7 @@ void handler_init(Handler *handler)
     ASSERT_ZERO(pthread_cond_init(&handler->parent_cond, NULL));
 }
 
-void inform_that_proc_left_MIMPI(int proc_rank)
+void inform_that_proc_left_MIMPI_mutex(int proc_rank)
 {
     // Mimpi_send always sends tag as first elem, so when we get ret
     // code 0 from first read we know that pipe is closed and process is
@@ -170,6 +171,24 @@ void inform_that_proc_left_MIMPI(int proc_rank)
         pthread_cond_signal(&mimpi_handler.parent_cond);
 
     pthread_mutex_unlock(&mimpi_handler.mutex);
+}
+
+void add_received_data_to_MIMPI_mutex(QElem *elem, int source_rank)
+{
+    // Now we get mutex and need to push_back (tag, count, source, data)
+    // to our queue list. Then we check if added data by us is data that
+    // parent wants.
+    ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
+
+    queue_push_back(&(mimpi_handler.tab_of_queues[source_rank]), elem);
+
+    // If elem we added is the one that parent looks for we signal the
+    // parent and give him critical section.
+    if (QElem_is_the_same(elem, mimpi_handler.wanted_rank,
+                          mimpi_handler.wanted_tag, mimpi_handler.wanted_count))
+        ASSERT_ZERO(pthread_cond_signal(&mimpi_handler.parent_cond));
+
+    ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
 }
 
 void read_what_other_proc_send(void *arg)
@@ -196,10 +215,17 @@ void read_what_other_proc_send(void *arg)
     // read from source till first read returns 0.
     while (true)
     {
+        // We don't need to acquire mutex, since we only read from array.
+        // If our parent process invoked MIMPI_finalize we dont want to read
+        // data any longer, so we check and break.
+        if (mimpi_handler.proc_left_MIMPI[parent_rank])
+            break;
+
         ret_code = chrecv(MY_STDIN, &tag, sizeof(int));
         if (ret_code == 0)
-        {   
-            inform_that_proc_left_MIMPI(source_rank);
+        {
+            // inform func acquires mutex, so its safe.
+            inform_that_proc_left_MIMPI_mutex(source_rank);
             printf("thread : Reading from %d proc closed\n", source_rank);
             break;
         }
@@ -220,27 +246,20 @@ void read_what_other_proc_send(void *arg)
             // received_data is a pointer to the 0 elem of our array, so in
             // order not to overwrite already saved data we need to save new
             // data starting from first free place.
-            read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
+            // We can only read PIPE_READ_SIZE bytes atomically from pipe, so we
+            // either read 512 bytes or less than 512 bytes in one read.
+            if((count - read_bytes) > PIPE_READ_SIZE)
+                read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
+                                 PIPE_READ_SIZE);
+            else
+                read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
                                  count - read_bytes);
         }
-
         read_bytes = 0;
-
         QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
-        // Now we get mutex and need to push_back (tag, count, source, data)
-        // to our queue list. Then we check if added data by us is data that
-        // parent wants.
-        pthread_mutex_lock(&mimpi_handler.mutex);
 
-        queue_push_back(&(mimpi_handler.tab_of_queues[source_rank]), elem);
-
-        // If elem we added is the one that parent looks for we signal the
-        // parent and give him critical section.
-        if (QElem_is_the_same(elem, mimpi_handler.wanted_rank,
-                              mimpi_handler.wanted_tag, mimpi_handler.wanted_count))
-            pthread_cond_signal(&mimpi_handler.parent_cond);
-
-        pthread_mutex_unlock(&mimpi_handler.mutex);
+        // add_received_data acquires mutex, so its safe.
+        add_received_data_to_MIMPI_mutex(elem, source_rank);
     }
 }
 
@@ -363,6 +382,7 @@ void MIMPI_Init(bool enable_deadlock_detection)
     channels_init();
     close_redundant_dscrpt();
     handler_init(&mimpi_handler);
+
 }
 
 void MIMPI_Finalize()
