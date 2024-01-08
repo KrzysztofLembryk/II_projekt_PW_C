@@ -610,7 +610,7 @@ MIMPI_Retcode MIMPI_Recv(
         else
         {
             found_sought_data = true;
-            QElem *elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, tag, count);
+            elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, tag, count);
 
            copy_received_data_to_destination(data, elem, count, source);
         }
@@ -618,6 +618,7 @@ MIMPI_Retcode MIMPI_Recv(
         ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
     }
 
+    return ret_val_of_MIMPI_Recv;
     // int my_rank = MIMPI_World_rank();
     // int nbr_proc = MIMPI_World_size();
     // int SRC_STARTING_DSCRPT = OFFSET + source * 2 * nbr_proc;
@@ -638,9 +639,6 @@ MIMPI_Retcode MIMPI_Recv(
     //     return MIMPI_ERROR_REMOTE_FINISHED;
 
     // uint8_t *received_data = (uint8_t*)data;
-
-    return MIMPI_SUCCESS;
-    // TODO
 }
 
 MIMPI_Retcode MIMPI_Barrier()
