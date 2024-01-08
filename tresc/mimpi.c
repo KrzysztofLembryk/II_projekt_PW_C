@@ -5,21 +5,29 @@
 #include "channel.h"
 #include "mimpi.h"
 #include "mimpi_common.h"
+//#include <semaphore.h>
+#include  <pthread.h>
 
 typedef struct Data
 {
-    int MY_STDIN;
-    int MY_STDOUT;
+    int nbr_of_proc;
+    int *proc_left_MIMPI;
+    // Mutex will guard adding data to queue list and modifying variables. 
+    pthread_mutex_t mutex;
+    // On parent_cond parent process will wait if it doesn't find proper recv
+    // on queue list.
+    pthread_cond_t parent_cond;
+
 
 } Data;
 
 Data mimpi_data;
 
-// void data_init(Data *data)
-// {
-//     data->MY_STDIN = OFFSET + MIMPI_World_rank() * 2;
-//     data->MY_STDOUT = data->MY_STDIN + 1;
-// }
+void data_init(Data *data)
+{
+    data->nbr_of_proc = MIMPI_World_size();
+    data->proc_left_MIMPI = calloc(data->nbr_of_proc, sizeof(int));
+}
 
 /**
  * We close all writing descrpt to other processes, we only need to read what
@@ -210,7 +218,9 @@ MIMPI_Retcode MIMPI_Send(
     // write dscrpt we need to add 1.
     int MY_STDOUT = MY_STARTING_DSCRPT + 2 * destination + 1;
 
-    int send_ret_code = chsend(MY_STDOUT, data_to_send, count);
+    int send_ret_code = chsend(MY_STDOUT, &tag, 1);
+    send_ret_code = chsend(MY_STDOUT, &count, 1);
+    send_ret_code = chsend(MY_STDOUT, data_to_send, count);
 
     printf("chsend ret code %d\n", send_ret_code);
 
