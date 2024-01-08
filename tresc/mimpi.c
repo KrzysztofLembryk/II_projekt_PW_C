@@ -7,6 +7,31 @@
 #include "mimpi_common.h"
 #include <semaphore.h>
 #include <pthread.h>
+#include <time.h>
+
+#include <errno.h>
+
+int msleep(long msec)
+{
+    struct timespec ts;
+    int res;
+
+    if (msec < 0)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    ts.tv_sec = msec / 1000;
+    ts.tv_nsec = (msec % 1000) * 1000000;
+
+    do
+    {
+        res = nanosleep(&ts, &ts);
+    } while (res && errno == EINTR);
+
+    return res;
+}
 
 typedef struct QElem
 {
@@ -202,13 +227,21 @@ void* read_what_other_proc_send(void *arg)
 {
     // source_rank says from who we receive data, we want value of int ptr arg
     // so first we cast it to int* and then we get value by * operator
-    int source_rank = *((int *)arg);
+    int *source_rank_ptr = arg;
+    int source_rank = *source_rank_ptr;
+    
+    // Paren thread allocated memory for that arg, we need to free it.
+    free(source_rank_ptr);
+
+    //printf("Source rank: %d\n", source_rank);
     int nbr_of_proc = MIMPI_World_size();
     int parent_rank = MIMPI_World_rank();
 
     // We calculate descrptr from which we will read.
     int SRC_STARTING_DSCRPT = OFFSET + source_rank * 2 * nbr_of_proc;
+    //printf("starting dscrpt %d\n", SRC_STARTING_DSCRPT);
     int MY_STDIN = SRC_STARTING_DSCRPT + 2 * parent_rank;
+    //printf("MY_stdin %d\n", MY_STDIN);
 
     // We receive tag, then count then data.
     int tag;
@@ -226,14 +259,27 @@ void* read_what_other_proc_send(void *arg)
         // If our parent process invoked MIMPI_finalize we dont want to read
         // data any longer, so we check and break.
         if (mimpi_handler.proc_left_MIMPI[parent_rank])
+        {
+            printf("I'm a thread, My parent process %d exited MIMPI\n", parent_rank);
             break;
-
+        }
+            
+        
+        //printf("proc: %d, STDIN: %d, thread waiting for tag\n", parent_rank, MY_STDIN);
         ret_code = chrecv(MY_STDIN, &tag, sizeof(int));
+        //printf("proc: %d, thread recv code: %d\n", parent_rank, ret_code);
+
         if (ret_code == 0)
         {
+            printf("thread in proc: %d, : Reading from %d, CLOSED\n", parent_rank, source_rank);
             // inform func acquires mutex, so its safe.
             inform_that_proc_left_MIMPI_mutex(source_rank);
-            printf("thread : Reading from %d proc closed\n", source_rank);
+            
+            break;
+        }
+        if(ret_code == -1)
+        {
+            printf("ERROR IN CHRECV IN THREAD!!! (probably reading from wrong descryptor)\n");
             break;
         }
 
@@ -268,6 +314,7 @@ void* read_what_other_proc_send(void *arg)
         // add_received_data acquires mutex, so its safe.
         add_received_data_to_MIMPI_mutex(elem, source_rank);
     }
+    return NULL;
 }
 
 /**
@@ -391,11 +438,21 @@ void MIMPI_Init(bool enable_deadlock_detection)
     handler_init(&mimpi_handler);
     
     int my_rank = MIMPI_World_rank();
-    for(int i = 0; i < mimpi_handler.nbr_of_proc; i++)
+
+    // if(my_rank == 0)
+    //     sleep(1);
+
+    for(int proc_rank = 0; proc_rank < mimpi_handler.nbr_of_proc; proc_rank++)
     {
-        if(i != my_rank)
+        if(proc_rank != my_rank)
         {
-            ASSERT_ZERO(pthread_create(&mimpi_handler.reading_threads[i], NULL, read_what_other_proc_send, (void*)&my_rank));    
+            // POSSIBLE MEMORY LEAK!
+            int *rank_for_thread = (int*)malloc(sizeof(int));
+            *rank_for_thread = proc_rank; 
+
+            //printf("Creating thread for reading from proc %d\n", proc_rank);
+            ASSERT_ZERO(pthread_create(
+                &mimpi_handler.reading_threads[proc_rank], NULL, read_what_other_proc_send, (void*)rank_for_thread));    
         }                      
     }
 }
@@ -468,14 +525,15 @@ MIMPI_Retcode MIMPI_Send(
     // write dscrpt we need to add 1.
     int MY_STDOUT = MY_STARTING_DSCRPT + 2 * destination + 1;
 
-    int send_ret_code = chsend(MY_STDOUT, &tag, sizeof(int));
-    send_ret_code = chsend(MY_STDOUT, &count, sizeof(int));
+    int send_ret_code = chsend(MY_STDOUT, &tag, sizeof(tag));
+    send_ret_code = chsend(MY_STDOUT, &count, sizeof(count));
     send_ret_code = chsend(MY_STDOUT, data_to_send, count);
 
-    printf("chsend ret code %d\n", send_ret_code);
+    printf("chsend data : ret code %d\n", send_ret_code);
 
     if (send_ret_code == -1)
         return MIMPI_ERROR_REMOTE_FINISHED;
+   
 
     return MIMPI_SUCCESS;
 }
@@ -491,18 +549,24 @@ MIMPI_Retcode MIMPI_Recv(
     if (source >= MIMPI_World_size() || source < 0)
         return MIMPI_ERROR_NO_SUCH_RANK;
 
-    int my_rank = MIMPI_World_rank();
-    int nbr_proc = MIMPI_World_size();
+    // int my_rank = MIMPI_World_rank();
+    // int nbr_proc = MIMPI_World_size();
+    // int SRC_STARTING_DSCRPT = OFFSET + source * 2 * nbr_proc;
+    // int MY_READ_DSCRPT_IN_SRC = SRC_STARTING_DSCRPT + 2 * my_rank;
+    
+    // sleep(1);
+    // printf("closing read dscrptr : %d,  for my thread\n", MY_READ_DSCRPT_IN_SRC);
+    // close(MY_READ_DSCRPT_IN_SRC);
 
-    // We read data from source process' pipe, so we need to find where it
-    // starts, and then our read dscrpt in found block of source proc dscrptrs.
-    int SRC_STARTING_DSCRPT = OFFSET + source * 2 * nbr_proc;
-    int MY_READ_DSCRPT_IN_SRC = SRC_STARTING_DSCRPT + 2 * my_rank;
+    // // We read data from source process' pipe, so we need to find where it
+    // // starts, and then our read dscrpt in found block of source proc dscrptrs.
+    // int SRC_STARTING_DSCRPT = OFFSET + source * 2 * nbr_proc;
+    // int MY_READ_DSCRPT_IN_SRC = SRC_STARTING_DSCRPT + 2 * my_rank;
 
-    int receive_ret_code = chrecv(MY_READ_DSCRPT_IN_SRC, data, count);
+    // int receive_ret_code = chrecv(MY_READ_DSCRPT_IN_SRC, data, count);
 
-    if (receive_ret_code == 0)
-        return MIMPI_ERROR_REMOTE_FINISHED;
+    // if (receive_ret_code == 0)
+    //     return MIMPI_ERROR_REMOTE_FINISHED;
 
     // uint8_t *received_data = (uint8_t*)data;
 
