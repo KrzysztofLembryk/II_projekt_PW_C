@@ -114,10 +114,10 @@ typedef struct Handler
     int nbr_of_proc;
 
     // proc_left_MIMPI - array to check when to ret MIMPI_ERROR_REMOTE_FINISHED
-    // or if our parent process is in mimpi finalize
+    // or if our parent process is in mimpi finalize.
     int *proc_left_MIMPI;
 
-    // wanted_* parameters say which data parent proc wants to read
+    // wanted_* parameters say which data parent proc wants to read.
     int wanted_rank;
     int wanted_count;
     int wanted_tag;
@@ -125,8 +125,13 @@ typedef struct Handler
     // For each process that can write to us we allocate queue for its data.
     QueueList *tab_of_queues;
 
+    // We create one thread for each proc that can send data to us.
+    // So we need an array to store our threads.
+    pthread_t *reading_threads;
+
     // Mutex will guard adding data to queue list and modifying variables.
     pthread_mutex_t mutex;
+
     // On parent_cond parent process will wait if it doesn't find proper recv
     // on queue list.
     pthread_cond_t parent_cond;
@@ -149,6 +154,8 @@ void handler_init(Handler *handler)
     {
         queue_init(&(handler->tab_of_queues[i]));
     }
+
+    handler->reading_threads = calloc(handler->nbr_of_proc, sizeof(pthread_t));
 
     ASSERT_ZERO(pthread_mutex_init(&(handler->mutex), NULL));
     ASSERT_ZERO(pthread_cond_init(&handler->parent_cond, NULL));
@@ -191,7 +198,7 @@ void add_received_data_to_MIMPI_mutex(QElem *elem, int source_rank)
     ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
 }
 
-void read_what_other_proc_send(void *arg)
+void* read_what_other_proc_send(void *arg)
 {
     // source_rank says from who we receive data, we want value of int ptr arg
     // so first we cast it to int* and then we get value by * operator
@@ -382,7 +389,15 @@ void MIMPI_Init(bool enable_deadlock_detection)
     channels_init();
     close_redundant_dscrpt();
     handler_init(&mimpi_handler);
-
+    
+    int my_rank = MIMPI_World_rank();
+    for(int i = 0; i < mimpi_handler.nbr_of_proc; i++)
+    {
+        if(i != my_rank)
+        {
+            ASSERT_ZERO(pthread_create(&mimpi_handler.reading_threads[i], NULL, read_what_other_proc_send, (void*)&my_rank));    
+        }                      
+    }
 }
 
 void MIMPI_Finalize()

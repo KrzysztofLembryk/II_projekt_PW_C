@@ -28,15 +28,16 @@ int main(int argc, char *argv[])
     
     if(my_rank == 0)
     {
-        //sleep(2);
-        MIMPI_Retcode ret_send = MIMPI_Send(data, 4, 1, 1);
+        sleep(2);
+        
+        MIMPI_Retcode ret_send = MIMPI_Send(data, 4, 1, 121);
         if(ret_send != MIMPI_SUCCESS)
             printf("I wanted to send but no-one waited\n");
     }
     else if(my_rank == 1)
     {
-        //MIMPI_Recv(recv_data, 4, 0, 1);
-
+        MIMPI_Recv(recv_data, 4, 0, 1);
+        printf("Ended receiving\n");
         //printf("data received: ");
         //for(int i = 0; i < 4; i++)
         //    printf("%hhu ", recv_data[i]);
