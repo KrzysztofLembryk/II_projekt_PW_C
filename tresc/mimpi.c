@@ -147,6 +147,8 @@ typedef struct Handler
     int wanted_count;
     int wanted_tag;
 
+    bool is_sought_data_present;
+
     // For each process that can write to us we allocate queue for its data.
     QueueList *tab_of_queues;
 
@@ -172,7 +174,7 @@ void handler_init(Handler *handler)
     handler->wanted_count = -1;
     handler->wanted_rank = -1;
     handler->wanted_tag = -1;
-
+    handler->is_sought_data_present = false;
     handler->tab_of_queues = calloc(handler->nbr_of_proc, sizeof(QueueList));
 
     for (int i = 0; i < handler->nbr_of_proc; i++)
@@ -218,30 +220,33 @@ void add_received_data_to_MIMPI_mutex(QElem *elem, int source_rank)
     // parent and give him critical section.
     if (QElem_is_the_same(elem, mimpi_handler.wanted_rank,
                           mimpi_handler.wanted_tag, mimpi_handler.wanted_count))
+    {
+        mimpi_handler.is_sought_data_present = true;
         ASSERT_ZERO(pthread_cond_signal(&mimpi_handler.parent_cond));
+    }
 
     ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
 }
 
-void* read_what_other_proc_send(void *arg)
+void *read_what_other_proc_send(void *arg)
 {
     // source_rank says from who we receive data, we want value of int ptr arg
     // so first we cast it to int* and then we get value by * operator
     int *source_rank_ptr = arg;
     int source_rank = *source_rank_ptr;
-    
+
     // Paren thread allocated memory for that arg, we need to free it.
     free(source_rank_ptr);
 
-    //printf("Source rank: %d\n", source_rank);
+    // printf("Source rank: %d\n", source_rank);
     int nbr_of_proc = MIMPI_World_size();
     int parent_rank = MIMPI_World_rank();
 
     // We calculate descrptr from which we will read.
     int SRC_STARTING_DSCRPT = OFFSET + source_rank * 2 * nbr_of_proc;
-    //printf("starting dscrpt %d\n", SRC_STARTING_DSCRPT);
+    // printf("starting dscrpt %d\n", SRC_STARTING_DSCRPT);
     int MY_STDIN = SRC_STARTING_DSCRPT + 2 * parent_rank;
-    //printf("MY_stdin %d\n", MY_STDIN);
+    // printf("MY_stdin %d\n", MY_STDIN);
 
     // We receive tag, then count then data.
     int tag;
@@ -263,21 +268,20 @@ void* read_what_other_proc_send(void *arg)
             printf("I'm a thread, My parent process %d exited MIMPI\n", parent_rank);
             break;
         }
-            
-        
-        //printf("proc: %d, STDIN: %d, thread waiting for tag\n", parent_rank, MY_STDIN);
+
+        // printf("proc: %d, STDIN: %d, thread waiting for tag\n", parent_rank, MY_STDIN);
         ret_code = chrecv(MY_STDIN, &tag, sizeof(int));
-        //printf("proc: %d, thread recv code: %d\n", parent_rank, ret_code);
+        // printf("proc: %d, thread recv code: %d\n", parent_rank, ret_code);
 
         if (ret_code == 0)
         {
             printf("thread in proc: %d, : Reading from %d, CLOSED\n", parent_rank, source_rank);
             // inform func acquires mutex, so its safe.
             inform_that_proc_left_MIMPI_mutex(source_rank);
-            
+
             break;
         }
-        if(ret_code == -1)
+        if (ret_code == -1)
         {
             printf("ERROR IN CHRECV IN THREAD!!! (probably reading from wrong descryptor)\n");
             break;
@@ -301,12 +305,12 @@ void* read_what_other_proc_send(void *arg)
             // data starting from first free place.
             // We can only read PIPE_READ_SIZE bytes atomically from pipe, so we
             // either read 512 bytes or less than 512 bytes in one read.
-            if((count - read_bytes) > PIPE_READ_SIZE)
+            if ((count - read_bytes) > PIPE_READ_SIZE)
                 read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
-                                 PIPE_READ_SIZE);
+                                     PIPE_READ_SIZE);
             else
                 read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
-                                 count - read_bytes);
+                                     count - read_bytes);
         }
         read_bytes = 0;
         QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
@@ -436,24 +440,24 @@ void MIMPI_Init(bool enable_deadlock_detection)
     channels_init();
     close_redundant_dscrpt();
     handler_init(&mimpi_handler);
-    
+
     int my_rank = MIMPI_World_rank();
 
     // if(my_rank == 0)
     //     sleep(1);
 
-    for(int proc_rank = 0; proc_rank < mimpi_handler.nbr_of_proc; proc_rank++)
+    for (int proc_rank = 0; proc_rank < mimpi_handler.nbr_of_proc; proc_rank++)
     {
-        if(proc_rank != my_rank)
+        if (proc_rank != my_rank)
         {
             // POSSIBLE MEMORY LEAK!
-            int *rank_for_thread = (int*)malloc(sizeof(int));
-            *rank_for_thread = proc_rank; 
+            int *rank_for_thread = (int *)malloc(sizeof(int));
+            *rank_for_thread = proc_rank;
 
-            //printf("Creating thread for reading from proc %d\n", proc_rank);
+            // printf("Creating thread for reading from proc %d\n", proc_rank);
             ASSERT_ZERO(pthread_create(
-                &mimpi_handler.reading_threads[proc_rank], NULL, read_what_other_proc_send, (void*)rank_for_thread));    
-        }                      
+                &mimpi_handler.reading_threads[proc_rank], NULL, read_what_other_proc_send, (void *)rank_for_thread));
+        }
     }
 }
 
@@ -533,9 +537,19 @@ MIMPI_Retcode MIMPI_Send(
 
     if (send_ret_code == -1)
         return MIMPI_ERROR_REMOTE_FINISHED;
-   
 
     return MIMPI_SUCCESS;
+}
+
+void copy_received_data_to_destination(void *data, QElem *elem, int count, 
+    int src)
+{
+    memcpy(data, elem->data, count * sizeof(elem->data[0]));
+    free(elem->data);
+    free(elem);
+    mimpi_handler.wanted_count = -1;
+    mimpi_handler.wanted_rank = -1;
+    mimpi_handler.wanted_tag = -1;
 }
 
 MIMPI_Retcode MIMPI_Recv(
@@ -550,28 +564,65 @@ MIMPI_Retcode MIMPI_Recv(
         return MIMPI_ERROR_NO_SUCH_RANK;
 
     bool found_sought_data = false;
+    MIMPI_Retcode ret_val_of_MIMPI_Recv = MIMPI_SUCCESS;
 
     ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
 
     QElem *elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, tag, count);
 
-    if(elem != NULL)
+    mimpi_handler.is_sought_data_present = false;
+
+    if (elem != NULL)
     {
         found_sought_data = true;
-        memcpy(data, elem->data, count * sizeof(elem->data));
-        free(elem->data);
-        free(elem);
-        mimpi_handler.wanted_count = -1;
-        mimpi_handler.wanted_rank = -1;
-        mimpi_handler.wanted_tag = -1;
+        copy_received_data_to_destination(data, elem, count, source);
+    }
+    else
+    {
+        mimpi_handler.wanted_count = count;
+        mimpi_handler.wanted_rank = source;
+        mimpi_handler.wanted_tag = tag;
     }
 
     ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
+
+    if (found_sought_data)
+        return MIMPI_SUCCESS;
+    else
+    {
+        if (mimpi_handler.proc_left_MIMPI[source])
+            return MIMPI_ERROR_REMOTE_FINISHED;
+
+        ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
+
+        while (!mimpi_handler.is_sought_data_present)
+        {
+            ASSERT_ZERO(pthread_cond_wait(&mimpi_handler.parent_cond,
+                                          &mimpi_handler.mutex));
+        }
+
+        // There are two reasons we can be woken up: either data we want is
+        // present or process from which we want data left MIMPI section.
+        if (mimpi_handler.proc_left_MIMPI[source])
+        {
+            ret_val_of_MIMPI_Recv = MIMPI_ERROR_REMOTE_FINISHED;
+        }
+        else
+        {
+            found_sought_data = true;
+            QElem *elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, tag, count);
+
+           copy_received_data_to_destination(data, elem, count, source);
+        }
+
+        ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
+    }
+
     // int my_rank = MIMPI_World_rank();
     // int nbr_proc = MIMPI_World_size();
     // int SRC_STARTING_DSCRPT = OFFSET + source * 2 * nbr_proc;
     // int MY_READ_DSCRPT_IN_SRC = SRC_STARTING_DSCRPT + 2 * my_rank;
-    
+
     // sleep(1);
     // printf("closing read dscrptr : %d,  for my thread\n", MY_READ_DSCRPT_IN_SRC);
     // close(MY_READ_DSCRPT_IN_SRC);
