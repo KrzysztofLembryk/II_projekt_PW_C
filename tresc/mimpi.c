@@ -5,7 +5,7 @@
 #include "channel.h"
 #include "mimpi.h"
 #include "mimpi_common.h"
-// #include <semaphore.h>
+#include <semaphore.h>
 #include <pthread.h>
 
 typedef struct QElem
@@ -20,7 +20,7 @@ typedef struct QElem
 
 QElem *QElem_make_new(int _rank, int _tag, int _count, uint8_t *_data)
 {
-    QElem *elem = (QElem*)malloc(sizeof(QElem));
+    QElem *elem = (QElem *)malloc(sizeof(QElem));
     elem->proc_rank = _rank;
     elem->tag = _tag;
     elem->count = _count;
@@ -32,7 +32,8 @@ QElem *QElem_make_new(int _rank, int _tag, int _count, uint8_t *_data)
 
 bool QElem_is_the_same(QElem *el, int rank, int tag, int count)
 {
-    return (el->proc_rank == rank) && (el->tag == tag) && (el->count == count);
+    return (el->proc_rank == rank) && (el->tag == tag || tag == 0) &&
+           (el->count == count);
 }
 
 typedef struct QueueList
@@ -50,7 +51,7 @@ void queue_init(QueueList *q)
 
 void queue_push_back(QueueList *q, QElem *new_elem)
 {
-    if(q->front == NULL)
+    if (q->front == NULL)
     {
         q->front = new_elem;
         q->end = new_elem;
@@ -67,37 +68,37 @@ void queue_push_back(QueueList *q, QElem *new_elem)
  * Function finds elem that has attributes equal to given rank, tag and count,
  * removes this elem from queue and returns ptr to it. If such elem doesnt exist
  * it returns NULL.
-*/
+ */
 QElem *queue_find_elem(QueueList *q, int rank, int tag, int count)
 {
     QElem *curr_elem = q->front;
 
-    while(curr_elem != NULL)
+    while (curr_elem != NULL)
     {
-        if(QElem_is_the_same(curr_elem, rank, tag, count))
+        if (QElem_is_the_same(curr_elem, rank, tag, count))
         {
-            if(curr_elem->next != NULL)
+            if (curr_elem->next != NULL)
             {
                 curr_elem->next->prev = curr_elem->prev;
 
-                if(curr_elem->prev != NULL)
+                if (curr_elem->prev != NULL)
                     curr_elem->prev->next = curr_elem->next;
                 else
                 {
                     // If curr_elem->prev = NULL this means curr_elem is END.
                     q->end = q->end->next;
-                }    
+                }
                 return curr_elem;
             }
             else
             {
                 // If curr_elem->next = NULL this means curr_elem is FRONT.
                 q->front = q->front->prev;
-                if(q->front != NULL)
+                if (q->front != NULL)
                     q->front->next = NULL;
                 else
                     q->end = NULL;
-                
+
                 return curr_elem;
             }
         }
@@ -107,7 +108,6 @@ QElem *queue_find_elem(QueueList *q, int rank, int tag, int count)
     // We didnt find sought elem so we return NULL.
     return NULL;
 }
-
 
 typedef struct Handler
 {
@@ -120,9 +120,9 @@ typedef struct Handler
     int wanted_rank;
     int wanted_count;
     int wanted_tag;
-    
 
-    QueueList queue;
+    // For each process that can write to us we allocate queue for its data.
+    QueueList *tab_of_queues;
 
     // Mutex will guard adding data to queue list and modifying variables.
     pthread_mutex_t mutex;
@@ -142,16 +142,41 @@ void handler_init(Handler *handler)
     handler->wanted_rank = -1;
     handler->wanted_tag = -1;
 
-    queue_init(&(handler->queue));
+    handler->tab_of_queues = calloc(handler->nbr_of_proc, sizeof(QueueList));
+
+    for (int i = 0; i < handler->nbr_of_proc; i++)
+    {
+        queue_init(&(handler->tab_of_queues[i]));
+    }
 
     ASSERT_ZERO(pthread_mutex_init(&(handler->mutex), NULL));
     ASSERT_ZERO(pthread_cond_init(&handler->parent_cond, NULL));
 }
 
+void inform_that_proc_left_MIMPI(int proc_rank)
+{
+    // Mimpi_send always sends tag as first elem, so when we get ret
+    // code 0 from first read we know that pipe is closed and process is
+    // no longer in MIMPI section. So we need to change status of
+    // source_rank proc in proc_left_MIMPI to true.
+    pthread_mutex_lock(&mimpi_handler.mutex);
+
+    mimpi_handler.proc_left_MIMPI[proc_rank] = 1;
+
+    // If our parent process waits for data from proc of source_rank
+    // we need to wake him up, then parent checks if sought data is
+    // present in queue, if not it should return ERROR_REMOTE_FINISHED
+    if (mimpi_handler.wanted_rank == proc_rank)
+        pthread_cond_signal(&mimpi_handler.parent_cond);
+
+    pthread_mutex_unlock(&mimpi_handler.mutex);
+}
+
 void read_what_other_proc_send(void *arg)
 {
-    // source_rank says from who we receive data
-    int source_rank = *((int*)arg);
+    // source_rank says from who we receive data, we want value of int ptr arg
+    // so first we cast it to int* and then we get value by * operator
+    int source_rank = *((int *)arg);
     int nbr_of_proc = MIMPI_World_size();
     int parent_rank = MIMPI_World_rank();
 
@@ -173,24 +198,9 @@ void read_what_other_proc_send(void *arg)
     {
         ret_code = chrecv(MY_STDIN, &tag, sizeof(int));
         if (ret_code == 0)
-        {
-            // Mimpi_send always sends tag as first elem, so when we get ret
-            // code 0 from first read we know that pipe is closed and process is
-            // no longer in MIMPI section. So we need to change status of
-            // source_rank proc in proc_left_MIMPI to true.
-            pthread_mutex_lock(&mimpi_handler.mutex);
-            
-            mimpi_handler.proc_left_MIMPI[source_rank] = 1;
-            
-            // If our parent process waits for data from proc of source_rank
-            // we need to wake him up, then parent checks if sought data is
-            // present in queue, if not it should return ERROR_REMOTE_FINISHED
-            if(mimpi_handler.wanted_rank == source_rank)
-                pthread_cond_signal(&mimpi_handler.parent_cond);
-
-            pthread_mutex_unlock(&mimpi_handler.mutex);
-
-            printf("Reading from %d closed\n", source_rank);
+        {   
+            inform_that_proc_left_MIMPI(source_rank);
+            printf("thread : Reading from %d proc closed\n", source_rank);
             break;
         }
 
@@ -202,33 +212,32 @@ void read_what_other_proc_send(void *arg)
 
         received_data = calloc(count, sizeof(uint8_t));
 
-        // Count = how many bytes we will read from pipe, 
-        // count might be greater than pipes buffor so we need to read from 
+        // Count = how many bytes we will read from pipe,
+        // count might be greater than pipes buffor so we need to read from
         // buffor till read_bytes are equal to our count.
-        while(read_bytes < count)
+        while (read_bytes < count)
         {
-            // received_data is a pointer to the 0 elem of our array, so in 
-            // order not to overwrite already saved data we need to save new 
+            // received_data is a pointer to the 0 elem of our array, so in
+            // order not to overwrite already saved data we need to save new
             // data starting from first free place.
-            read_bytes += chrecv(MY_STDIN, received_data + read_bytes, 
-                count - read_bytes);
+            read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
+                                 count - read_bytes);
         }
 
         read_bytes = 0;
 
+        QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
         // Now we get mutex and need to push_back (tag, count, source, data)
         // to our queue list. Then we check if added data by us is data that
         // parent wants.
         pthread_mutex_lock(&mimpi_handler.mutex);
 
-        QElem *elem = QElem_make_new(source_rank, tag, count, received_data); 
-
-        queue_push_back(&mimpi_handler.queue, elem);
+        queue_push_back(&(mimpi_handler.tab_of_queues[source_rank]), elem);
 
         // If elem we added is the one that parent looks for we signal the
         // parent and give him critical section.
-        if(QElem_is_the_same(elem, mimpi_handler.wanted_rank,  
-                mimpi_handler.wanted_tag, mimpi_handler.wanted_count))
+        if (QElem_is_the_same(elem, mimpi_handler.wanted_rank,
+                              mimpi_handler.wanted_tag, mimpi_handler.wanted_count))
             pthread_cond_signal(&mimpi_handler.parent_cond);
 
         pthread_mutex_unlock(&mimpi_handler.mutex);
