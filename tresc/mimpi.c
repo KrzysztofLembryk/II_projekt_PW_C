@@ -14,12 +14,13 @@ typedef struct QElem
     int tag;
     int count;
     uint8_t *data;
-    QElem *prev, *next;
+    struct QElem *prev;
+    struct QElem *next;
 } QElem;
 
 QElem *QElem_make_new(int _rank, int _tag, int _count, uint8_t *_data)
 {
-    QElem *elem = (Qelem*)malloc(sizeof(QElem));
+    QElem *elem = (QElem*)malloc(sizeof(QElem));
     elem->proc_rank = _rank;
     elem->tag = _tag;
     elem->count = _count;
@@ -150,7 +151,7 @@ void handler_init(Handler *handler)
 void read_what_other_proc_send(void *arg)
 {
     // source_rank says from who we receive data
-    int source_rank = (int)arg;
+    int source_rank = *((int*)arg);
     int nbr_of_proc = MIMPI_World_size();
     int parent_rank = MIMPI_World_rank();
 
