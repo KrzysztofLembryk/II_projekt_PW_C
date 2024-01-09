@@ -23,7 +23,7 @@ shouldn't observably differ in any way other than execution duration.
             fprintf(                                                                         \
                 stderr,                                                                      \
                 "ERROR: Failed: %s\n\tIn function %s() in %s line %d.\n\tErrno: (%d; %s)\n", \
-                #expr, __func__, __FILE__, __LINE__, errno, strerror(errno)                  \
+                #expr, __func__, __FILE__, __LINE__, _errno, strerror(_errno)                  \
             );                                                                               \
     } while(0)
 
@@ -81,7 +81,7 @@ int channel(int pipefd[2])
 
 void channels_init() {
     signal(SIGPIPE, SIG_IGN);
-    
+
     pthread_mutexattr_t attr;
     ASSERT_ZERO(pthread_mutexattr_init(&attr));
     ASSERT_ZERO(pthread_mutex_init(&mutex, &attr));
