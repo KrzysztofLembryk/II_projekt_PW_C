@@ -228,7 +228,7 @@ void inform_that_proc_left_MIMPI_mutex(int proc_rank)
     // no longer in MIMPI section. So we need to change status of
     // source_rank proc in proc_left_MIMPI to true.
     pthread_mutex_lock(&mimpi_handler.mutex);
-    printf("thread informing that proc source left MIMPI\n");
+    //printf("thread informing that proc source left MIMPI\n");
     mimpi_handler.proc_left_MIMPI[proc_rank] = 1;
     
     // If our parent process waits for data from proc of source_rank
@@ -257,7 +257,7 @@ void add_received_data_to_MIMPI_mutex(QElem *elem, int source_rank)
     if (QElem_is_the_same(elem, mimpi_handler.wanted_rank,
                           mimpi_handler.wanted_tag, mimpi_handler.wanted_count))
     {
-        printf("Added elem to queue is sought by parent, I'm waking him up\n");
+        //printf("Added elem to queue is sought by parent, I'm waking him up\n");
         mimpi_handler.is_sought_data_present = true;
         mimpi_handler.parent_wake_up = true;
         ASSERT_ZERO(pthread_cond_signal(&mimpi_handler.parent_cond));
