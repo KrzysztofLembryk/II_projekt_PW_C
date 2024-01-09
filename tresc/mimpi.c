@@ -74,6 +74,22 @@ void queue_init(QueueList *q)
     q->end = NULL;
 }
 
+void queue_destruct(QueueList *q)
+{
+    QElem *curr = q->front;
+    QElem *prev;
+    while(curr != NULL)
+    {
+        prev = curr->prev;
+        free(curr->data);
+        free(curr);
+        curr = prev;
+    }
+
+    q->front = NULL;
+    q->end = NULL;
+}
+
 void queue_push_back(QueueList *q, QElem *new_elem)
 {
     if (q->front == NULL)
@@ -137,7 +153,6 @@ QElem *queue_find_elem(QueueList *q, int rank, int tag, int count)
 typedef struct Handler
 {
     int nbr_of_proc;
-
     // proc_left_MIMPI - array to check when to ret MIMPI_ERROR_REMOTE_FINISHED
     // or if our parent process is in mimpi finalize.
     int *proc_left_MIMPI;
@@ -188,6 +203,22 @@ void handler_init(Handler *handler)
 
     ASSERT_ZERO(pthread_mutex_init(&(handler->mutex), NULL));
     ASSERT_ZERO(pthread_cond_init(&handler->parent_cond, NULL));
+}
+
+void handler_destruct(Handler *handler)
+{
+    free(handler->proc_left_MIMPI);
+    free(handler->reading_threads);
+
+    for(int i = 0; i < mimpi_handler.nbr_of_proc; i++)
+    {
+        queue_destruct(&mimpi_handler.tab_of_queues[i]);
+    }
+
+    free(mimpi_handler.tab_of_queues);
+
+    ASSERT_ZERO(pthread_mutex_destroy(&handler->mutex));
+    ASSERT_ZERO(pthread_cond_destroy(&handler->parent_cond));
 }
 
 void inform_that_proc_left_MIMPI_mutex(int proc_rank)
@@ -475,7 +506,22 @@ void MIMPI_Init(bool enable_deadlock_detection)
 
 void MIMPI_Finalize()
 {
+    ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
+
+    mimpi_handler.proc_left_MIMPI[MIMPI_World_rank()] = 1;
+
+    ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
+
     close_all_left_dscrptrs();
+
+    for(int i = 0; i < mimpi_handler.nbr_of_proc; i++)
+    {
+        if(i != MIMPI_World_rank())
+            ASSERT_ZERO(pthread_join(mimpi_handler.reading_threads[i], NULL));
+    }
+
+    handler_destruct(&mimpi_handler);
+
     channels_finalize();
 }
 
