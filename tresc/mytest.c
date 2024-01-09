@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
         // printf("proc %d sleeping\n", my_rank);
         // sleep(2);
 
-        MIMPI_Retcode ret_send = MIMPI_Send(data, 4, 1, 121);
+        MIMPI_Retcode ret_send = MIMPI_Send(data, 4, 1, 1);
         if(ret_send != MIMPI_SUCCESS)
             printf("I wanted to send but no-one waited\n");
         else
