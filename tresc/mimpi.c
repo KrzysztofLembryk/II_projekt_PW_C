@@ -286,8 +286,8 @@ void *read_what_other_proc_send(void *arg)
 
     int MY_STDIN = SRC_STARTING_DSCRPT + 2 * parent_rank;
     int MY_STDIN_FROM_PARENT = PARENT_DSCRPT + 2 * parent_rank;
-    //printf("My parent: %d, his stdin: %d\n", parent_rank, MY_STDIN_FROM_PARENT);
-    // Needed for fd_set.
+    // printf("My parent: %d, his stdin: %d\n", parent_rank, MY_STDIN_FROM_PARENT);
+    //  Needed for fd_set.
     int bigger_stdin =
         (MY_STDIN > MY_STDIN_FROM_PARENT) ? MY_STDIN : MY_STDIN_FROM_PARENT;
 
@@ -296,7 +296,7 @@ void *read_what_other_proc_send(void *arg)
     int count;
     uint8_t *received_data;
 
-    //int ret_code;
+    // int ret_code;
     int read_bytes = 0;
 
     // This set will be used to wait for either tag from src proc or parent proc
@@ -319,35 +319,35 @@ void *read_what_other_proc_send(void *arg)
         FD_ZERO(&dscrpt_set_src_and_parent);
         FD_SET(MY_STDIN, &dscrpt_set_src_and_parent);
         FD_SET(MY_STDIN_FROM_PARENT, &dscrpt_set_src_and_parent);
-        //printf("thread waiting on select\n");
+        // printf("thread waiting on select\n");
         select(bigger_stdin + 1, &dscrpt_set_src_and_parent, NULL, NULL, NULL);
 
         // Now we check which dscrpt is still in set, if not MY_STDIN it means
         // that someone wrote sth to MY_STDIN.
         if (FD_ISSET(MY_STDIN, &dscrpt_set_src_and_parent))
         {
-            //printf("thread received tag from src proc\n");
+            // printf("thread received tag from src proc\n");
             chrecv(MY_STDIN, &tag, sizeof(tag));
-        }  
+        }
         else
         {
-            //printf("thread received tag from parent proc\n");
+            // printf("thread received tag from parent proc\n");
             chrecv(MY_STDIN_FROM_PARENT, &tag, sizeof(tag));
-        }   
-            
-        //printf("Got tag %d\n", tag);
-        // We check the message we got, if its not one of the two below we can
-        // read more data from pipe.
+        }
+
+        // printf("Got tag %d\n", tag);
+        //  We check the message we got, if its not one of the two below we can
+        //  read more data from pipe.
         if (tag == PARENT_PROC_IN_FINALIZE)
         {
-            //printf("thread breaking : parent proc in finalize\n");
+            // printf("thread breaking : parent proc in finalize\n");
             break;
         }
         else if (tag == SRC_PROC_IN_FINALIZE)
         {
             // Message from src proc that it left mIMPI, so we need to inform
             // that it left and if needed wake up my parent process.
-            //printf("thread breaking : src proc left mimpi, informing parent\n");
+            // printf("thread breaking : src proc left mimpi, informing parent\n");
             inform_that_SRCproc_left_MIMPI_mutex(source_rank);
             break;
         }
@@ -495,7 +495,7 @@ void close_all_left_dscrptrs()
         }
         else // curr_proc != my_rank
         {
-            // We need to close only reading ends of pipes from other process' 
+            // We need to close only reading ends of pipes from other process'
             // at our indexes, cause all other ends are already closed.
             curr_read_dscrpt += 2 * my_rank;
             // printf("closing %d\n", curr_read_dscrpt);
@@ -578,7 +578,6 @@ void MIMPI_Finalize()
 
     send_finalize_to_all_threads();
     send_finalize_to_all_other_proc();
-    
 
     for (int i = 0; i < mimpi_handler.nbr_of_proc; i++)
     {
@@ -695,20 +694,20 @@ MIMPI_Retcode MIMPI_Recv(
     bool found_sought_data = false;
 
     ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
-    //printf("Parent searching for elem\n");
+    // printf("Parent searching for elem\n");
     QElem *elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, tag, count);
 
     mimpi_handler.is_sought_data_present = false;
-    //printf("Parent ended search: ");
+    // printf("Parent ended search: ");
     if (elem != NULL)
     {
-        //printf("SUCCES\n");
+        // printf("SUCCES\n");
         found_sought_data = true;
         cpy_rec_data_to_dest_set_wanted_flags(data, elem, count, source);
     }
     else
     {
-        //printf("FAILURE\n");
+        // printf("FAILURE\n");
         mimpi_handler.wanted_count = count;
         mimpi_handler.wanted_rank = source;
         mimpi_handler.wanted_tag = tag;
@@ -724,40 +723,33 @@ MIMPI_Retcode MIMPI_Recv(
 
         if (mimpi_handler.proc_left_MIMPI[source] &&
             !mimpi_handler.is_sought_data_present)
-            {
-                //printf("Parent: src proc ended and also no data present\n");
-                ret_val_of_MIMPI_Recv = MIMPI_ERROR_REMOTE_FINISHED;
-            }
-            
+        {
+            // printf("Parent: src proc ended and also no data present\n");
+            ret_val_of_MIMPI_Recv = MIMPI_ERROR_REMOTE_FINISHED;
+        }
+
         else
         {
-            //printf("Parent waiting for sb to wake me up\n");
+            // printf("Parent waiting for sb to wake me up\n");
             while (!mimpi_handler.parent_wake_up)
             {
                 ASSERT_ZERO(pthread_cond_wait(&mimpi_handler.parent_cond,
                                               &mimpi_handler.mutex));
             }
-            //printf("Parent woken up\n");
+            
+            // We can be woken up for two reasons: either data we want is on the
+            // queue or process we want data from left MIMPI, so our data won't
+            // be on our list, thus we search whole list and check if found elem
+            // is not NULL
             mimpi_handler.parent_wake_up = false;
-            // There are two reasons we can be woken up: either data we want is
-            // present or process from which we want data left MIMPI section.
-            // If latter we need to return ERROR_REMOTE_FINISHED.
-            if (mimpi_handler.proc_left_MIMPI[source] &&
-                !mimpi_handler.is_sought_data_present)
-            {
-                //printf("Proc that I want to read from left MIMPI too early\n");
-                ret_val_of_MIMPI_Recv = MIMPI_ERROR_REMOTE_FINISHED;
-            }
+
+            // found_sought_data = true;
+            // printf("parent found sought data\n");
+            elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, tag, count);
+            if (elem != NULL)
+                cpy_rec_data_to_dest_set_wanted_flags(data, elem, count, source);
             else
-            {
-                // found_sought_data = true;
-                //printf("parent found sought data\n");
-                elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, tag, count);
-                if (elem != NULL)
-                    cpy_rec_data_to_dest_set_wanted_flags(data, elem, count, source);
-                else
-                    ret_val_of_MIMPI_Recv = MIMPI_ERROR_REMOTE_FINISHED;
-            }
+                ret_val_of_MIMPI_Recv = MIMPI_ERROR_REMOTE_FINISHED;
         }
 
         ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));

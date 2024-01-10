@@ -27,14 +27,14 @@ int main(int argc, char **argv)
         }
         ASSERT_MIMPI_OK(MIMPI_Send(data, size, to, tag));
         free(data);
-        printf("Proc %d ended sending, send ok?\n", world_rank);
+        //printf("Proc %d ended sending, send ok?\n", world_rank);
     }
     else if (to == world_rank)
     {
-        printf("proc %d receiving data:\n", world_rank);
+        //printf("proc %d receiving data:\n", world_rank);
         char *data = (char *)malloc((size_t)size * (size_t) sizeof(char));
         ASSERT_MIMPI_OK(MIMPI_Recv(data, size, from, tag));
-        printf("asserting\n");
+        //printf("asserting\n");
         for(int i=0;i<size; i++){
             assert(data[i] == (char)((i ^ 123456) % 117));
         }
