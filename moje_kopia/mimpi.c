@@ -221,7 +221,7 @@ void handler_destruct(Handler *handler)
     ASSERT_ZERO(pthread_cond_destroy(&handler->parent_cond));
 }
 
-void inform_that_proc_left_MIMPI_mutex(int proc_rank)
+void inform_that_SRCproc_left_MIMPI_mutex(int proc_rank)
 {
     // Mimpi_send always sends tag as first elem, so when we get ret
     // code 0 from first read we know that pipe is closed and process is
@@ -315,7 +315,7 @@ void *read_what_other_proc_send(void *arg)
             //printf("thread WRITING END OF PIPE CLOSED, so I can no longer read, informing parent that src proc left MIMPI\n");
             // inform_func sets flag that src proc left mimpi and if src proc
             // rank is wanted it wakes up parent. Acquires mutex, so its safe.
-            inform_that_proc_left_MIMPI_mutex(source_rank);
+            inform_that_SRCproc_left_MIMPI_mutex(source_rank);
 
             break;
         }

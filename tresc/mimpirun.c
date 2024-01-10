@@ -94,6 +94,7 @@ int main(int argc, char *argv[])
     char **rest_of_args = &argv[2];
     char idx_str[12];
     int nbr_of_proc = atoi(argv[1]);
+    printf("nbr of proc: %d\n", nbr_of_proc);
     const int REPLACE = 1;
 
     prepare_pipes(nbr_of_proc);

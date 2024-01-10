@@ -61,6 +61,8 @@ _Noreturn extern void fatal(const char* fmt, ...);
 #define NBR_PROC "MIMPI_NBR_PROC"
 #define PROC_RANK "MIMPI_PROC_RANK"
 #define PIPE_READ_SIZE 512
+#define PARENT_PROC_IN_FINALIZE -1
+#define SRC_PROC_IN_FINALIZE -2
 
 
 #endif // MIMPI_COMMON_H
