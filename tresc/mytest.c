@@ -58,8 +58,8 @@ int main(int argc, char *argv[])
     {
         // printf("proc %d sleeping\n", my_rank);
         // sleep(2);
-
-        MIMPI_Retcode ret_send = MIMPI_Send(data, 4, 1, 1);
+        uint8_t val_to_Send = 69;
+        MIMPI_Retcode ret_send = MIMPI_Send(&val_to_Send, sizeof(val_to_Send), 1, 1);
         if(ret_send != MIMPI_SUCCESS)
             printf("I wanted to send but no-one waited\n");
         else
@@ -67,11 +67,11 @@ int main(int argc, char *argv[])
     }
     else if(my_rank == 1)
     {
-        MIMPI_Recv(recv_data, 4, 0, 1);
+        MIMPI_Recv(recv_data, 1, 0, 1);
         //m_sleep(1);
         printf("--------Ended receiving--------\n\n");
         printf("data received: ");
-        for(int i = 0; i < 4; i++)
+        for(int i = 0; i < 1; i++)
            printf("%hhu ", recv_data[i]);
         printf("\n");
     }

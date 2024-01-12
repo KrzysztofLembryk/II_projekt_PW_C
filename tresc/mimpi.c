@@ -188,9 +188,9 @@ void handler_init(Handler *handler)
 {
     handler->nbr_of_proc = MIMPI_World_size();
     handler->proc_left_MIMPI = calloc(handler->nbr_of_proc, sizeof(int));
-    handler->wanted_count = -1;
-    handler->wanted_rank = -1;
-    handler->wanted_tag = -1;
+    handler->wanted_count = COUNT_NOT_WANTED;
+    handler->wanted_rank = RANK_NOT_WANTED;
+    handler->wanted_tag = TAG_NOT_WANTED;
     handler->is_sought_data_present = false;
     handler->parent_wake_up = false;
     handler->tab_of_queues = calloc(handler->nbr_of_proc, sizeof(QueueList));
@@ -674,9 +674,9 @@ void cpy_rec_data_to_dest_set_wanted_flags(void *data, QElem *elem, int count,
     memcpy(data, elem->data, count * sizeof(elem->data[0]));
     free(elem->data);
     free(elem);
-    mimpi_handler.wanted_count = -1;
-    mimpi_handler.wanted_rank = -1;
-    mimpi_handler.wanted_tag = -1;
+    mimpi_handler.wanted_count = COUNT_NOT_WANTED;
+    mimpi_handler.wanted_rank = RANK_NOT_WANTED;
+    mimpi_handler.wanted_tag = TAG_NOT_WANTED;
 }
 
 MIMPI_Retcode MIMPI_Recv(
@@ -727,7 +727,6 @@ MIMPI_Retcode MIMPI_Recv(
             // printf("Parent: src proc ended and also no data present\n");
             ret_val_of_MIMPI_Recv = MIMPI_ERROR_REMOTE_FINISHED;
         }
-
         else
         {
             // printf("Parent waiting for sb to wake me up\n");
@@ -736,7 +735,7 @@ MIMPI_Retcode MIMPI_Recv(
                 ASSERT_ZERO(pthread_cond_wait(&mimpi_handler.parent_cond,
                                               &mimpi_handler.mutex));
             }
-            
+
             // We can be woken up for two reasons: either data we want is on the
             // queue or process we want data from left MIMPI, so our data won't
             // be on our list, thus we search whole list and check if found elem
@@ -756,31 +755,107 @@ MIMPI_Retcode MIMPI_Recv(
     }
 
     return ret_val_of_MIMPI_Recv;
-    // int my_rank = MIMPI_World_rank();
-    // int nbr_proc = MIMPI_World_size();
-    // int SRC_STARTING_DSCRPT = OFFSET + source * 2 * nbr_proc;
-    // int MY_READ_DSCRPT_IN_SRC = SRC_STARTING_DSCRPT + 2 * my_rank;
-
-    // sleep(1);
-    // printf("closing read dscrptr : %d,  for my thread\n", MY_READ_DSCRPT_IN_SRC);
-    // close(MY_READ_DSCRPT_IN_SRC);
-
-    // // We read data from source process' pipe, so we need to find where it
-    // // starts, and then our read dscrpt in found block of source proc dscrptrs.
-    // int SRC_STARTING_DSCRPT = OFFSET + source * 2 * nbr_proc;
-    // int MY_READ_DSCRPT_IN_SRC = SRC_STARTING_DSCRPT + 2 * my_rank;
-
-    // int receive_ret_code = chrecv(MY_READ_DSCRPT_IN_SRC, data, count);
-
-    // if (receive_ret_code == 0)
-    //     return MIMPI_ERROR_REMOTE_FINISHED;
-
-    // uint8_t *received_data = (uint8_t*)data;
 }
 
+MIMPI_Retcode inform_parent_cannot_synch_barrier(int my_parent, int left_son, 
+    int right_son)
+{
+    int message = CANNOT_SYNCH_BARRIER;
+    int ret_val_send = MIMPI_Send(&message, sizeof(message), my_parent, MAKE_MIMPI_BARRIER);
+
+    // If we succeed in sending message to our parent, so 
+    // ret_val = MIMPI_succes we wait for info with tag RELEASE_MIMPI_BARRIER.
+    // If we didnt succeeded in sending message to our parent, this
+    // means that our parent is no longer in mimpi thus we need
+    // to send message about broken barrier to our subtree. And we can safely 
+    // leave barrier function with MIMPI_ERROR_REMOTE_FINISHED
+    if (ret_val_send != MIMPI_SUCCESS)
+    {
+        message = CANNOT_SYNCH_BARRIER;
+
+        MIMPI_Send(&message, sizeof(message), left_son, RELEASE_MIMPI_BARRIER);
+        MIMPI_Send(&message, sizeof(message), right_son, RELEASE_MIMPI_BARRIER);
+
+        return MIMPI_ERROR_REMOTE_FINISHED;
+    }
+    return MIMPI_SUCCESS;
+}
+
+/**
+ * We wait for information from our two sons whether they are waiting in barrier
+ * we do it by using our recv function
+ */
 MIMPI_Retcode MIMPI_Barrier()
 {
-    // TODO
+    int my_rank = MIMPI_World_rank();
+    int my_parent = my_rank / 2;
+    int left_son = 2 * my_rank;
+    int right_son = 2 * my_rank + 1;
+    int *tag = (int *)malloc(sizeof(int));
+    int ret_val_recv1 = MIMPI_SUCCESS;
+    int ret_val_recv2 = MIMPI_SUCCESS;
+
+    // We wait for info from our left and right son, whether our whole subtree
+    // is waiting.
+    if (left_son < MIMPI_World_size())
+        ret_val_recv1 = MIMPI_Recv(tag, sizeof(int), left_son, MAKE_MIMPI_BARRIER);
+    if (right_son < MIMPI_World_size())
+        ret_val_recv2 = MIMPI_Recv(tag, sizeof(int), right_son, MAKE_MIMPI_BARRIER);
+
+    if (my_rank != 0)
+    {
+        if (ret_val_recv1 != MIMPI_SUCCESS || ret_val_recv2 != MIMPI_SUCCESS)
+        {
+            // This means that one of our sons has already ended thus we need to
+            // inform our parent that barrier cannot be made.
+            int ret = inform_parent_cannot_synch_barrier(my_parent, left_son, right_son);
+            if(ret == MIMPI_ERROR_REMOTE_FINISHED)
+                return MIMPI_ERROR_REMOTE_FINISHED;
+
+        }
+        else
+        {
+            // Both of our sons sent us a message, we need to check it since it is
+            // possible that somewhere in our subtree one of processes ended
+            if (*tag == CANNOT_SYNCH_BARRIER)
+            {
+                // This means that one of our sons has already ended thus we need to
+                // inform our parent that barrier cannot be made.
+                int message = CANNOT_SYNCH_BARRIER;
+                int ret_val_send = MIMPI_Send(&message, sizeof(message), my_parent, MAKE_MIMPI_BARRIER);
+
+                // If we succeed in sending message to our parent we wait for info
+                // with tag RELEASE_MIMPI_BARRIER.
+                if (ret_val_send != MIMPI_SUCCESS)
+                {
+                    // If we didnt succeeded in sending message to our parent, this
+                    // means that our parent is no longer in mimpi thus we need
+                    // to send message about broken barrier to our subtree.
+                    message = CANNOT_SYNCH_BARRIER;
+
+                    MIMPI_Send(&message, sizeof(message), left_son, RELEASE_MIMPI_BARRIER);
+                    MIMPI_Send(&message, sizeof(message), right_son, RELEASE_MIMPI_BARRIER);
+
+                    return MIMPI_ERROR_REMOTE_FINISHED;
+                }
+            }
+            else // tag == MAKE_MIMPI_BARRIER
+            {
+                // Here we need to inform our parent that we can make barrier
+            }
+        }
+
+        // We successfully received messages from our sons, and sending message
+        // to our parent was also successful, thus we need to wait for info from
+        // him whether release barrier or barrier is broken.
+        ret_val_recv1 = MIMPI_Recv(tag, sizeof(int), my_parent, RELEASE_MIMPI_BARRIER);
+    }
+    else
+    {
+    }
+
+    // We got information that both of our sons
+
     return MIMPI_SUCCESS;
 }
 
