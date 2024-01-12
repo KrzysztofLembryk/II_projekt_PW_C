@@ -830,8 +830,7 @@ MIMPI_Retcode MIMPI_Barrier()
         // be made.
         if (ret_val_recv1 != MIMPI_SUCCESS || ret_val_recv2 != MIMPI_SUCCESS)
         {
-            inform_ret = inform_parent_about_state_of_barrier
-            (CANNOT_SYNCH_BARRIER, FIRST_STAGE_TAG, tag1, tag2);
+            inform_ret = inform_parent_about_state_of_barrier(CANNOT_SYNCH_BARRIER, FIRST_STAGE_TAG, tag1, tag2);
 
             // If we get error from inform_func this means that our parent has
             // left MIMPI so we cannot propagete our message higher.
@@ -848,8 +847,7 @@ MIMPI_Retcode MIMPI_Barrier()
             // if clause.
             if (*tag1 == CANNOT_SYNCH_BARRIER || *tag2 == CANNOT_SYNCH_BARRIER)
             {
-                inform_ret = inform_parent_about_state_of_barrier
-                (CANNOT_SYNCH_BARRIER, FIRST_STAGE_TAG, tag1, tag2);
+                inform_ret = inform_parent_about_state_of_barrier(CANNOT_SYNCH_BARRIER, FIRST_STAGE_TAG, tag1, tag2);
 
                 if (inform_ret == MIMPI_ERROR_REMOTE_FINISHED)
                     return MIMPI_ERROR_REMOTE_FINISHED;
@@ -869,7 +867,20 @@ MIMPI_Retcode MIMPI_Barrier()
         // We successfully received messages from our sons, and sending message
         // to our parent was also successful, thus we need to wait for info from
         // him whether release barrier or barrier is broken.
-        ret_val_recv1 = MIMPI_Recv(tag1, sizeof(int), my_parent, RELEASE_MIMPI_BARRIER);
+        ret_val_recv1 = MIMPI_Recv(tag1, sizeof(int), my_parent, SECOND_STAGE_TAG);
+
+        // We got message from our parent, so we forward it to our sons
+        int message = *tag1;
+
+        if (left_son < MIMPI_World_size())
+            MIMPI_Send(&message, sizeof(message), left_son, SECOND_STAGE_TAG);
+        if (right_son < MIMPI_World_size())
+            MIMPI_Send(&message, sizeof(message), right_son, SECOND_STAGE_TAG);
+
+        free(tag1);
+        // Depending on gotten message we return error or success.
+        return (message == RELEASE_MIMPI_BARRIER) ? MIMPI_SUCCESS : 
+                                                    MIMPI_ERROR_REMOTE_FINISHED;
     }
     else
     {
