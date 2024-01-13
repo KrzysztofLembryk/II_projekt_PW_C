@@ -300,7 +300,7 @@ void *read_what_other_proc_send(void *arg)
     // We receive tag, then count then data.
     int tag;
     int count;
-    DataPack *received_data;
+    uint8_t *received_data;
 
     // int ret_code;
 
@@ -315,7 +315,6 @@ void *read_what_other_proc_send(void *arg)
         if (mimpi_handler.proc_left_MIMPI[parent_rank])
             break;
 
-        received_data = (DataPack *)malloc(sizeof(DataPack));
         // We init our fd_set with two dscrpt that we want to read from.
         // LNIUX MAN:
         // Upon return, each of the file descriptor sets is
@@ -334,15 +333,12 @@ void *read_what_other_proc_send(void *arg)
         {
 
             // We send packages (structs) through pipes
-            chrecv(MY_STDIN, &(received_data->tag), sizeof(tag));
-
-            tag = received_data->tag;
+            chrecv(MY_STDIN, &tag, sizeof(tag));
         }
         else
         {
             // printf("thread received tag from parent proc\n");
-            chrecv(MY_STDIN_FROM_PARENT, &(received_data->tag), sizeof(tag));
-            tag = received_data->tag;
+            chrecv(MY_STDIN_FROM_PARENT, &tag, sizeof(tag));
         }
 
         // printf("Got tag %d\n", tag);
@@ -351,7 +347,6 @@ void *read_what_other_proc_send(void *arg)
         if (tag == PARENT_PROC_IN_FINALIZE)
         {
             // printf("thread breaking : parent proc in finalize\n");
-            free(received_data);
             break;
         }
         else if (tag == SRC_PROC_IN_FINALIZE)
@@ -360,7 +355,6 @@ void *read_what_other_proc_send(void *arg)
             // that it left and if needed wake up my parent process.
             // printf("thread breaking : src proc left mimpi, informing parent\n");
             inform_that_SRCproc_left_MIMPI_mutex(source_rank);
-            free(received_data);
             break;
         }
 
@@ -368,11 +362,9 @@ void *read_what_other_proc_send(void *arg)
         // we need to allocate that many bytes in our received_data variable
         // so that we could store all read data and in future parent process
         // could copy this data.
-        chrecv(MY_STDIN, &(received_data->count), sizeof(count));
-        count = received_data->count;
-
-        received_data->data = calloc(count, sizeof(uint8_t));
-
+        chrecv(MY_STDIN, count, sizeof(count));
+        
+        received_data = calloc(count, sizeof(uint8_t));
         int read_bytes = 0;
         // Count might be greater than pipes buffor so we need to read from
         // buffor till read_bytes are equal to our count.
@@ -384,10 +376,10 @@ void *read_what_other_proc_send(void *arg)
             // We can only read PIPE_READ_SIZE bytes atomically from pipe, so we
             // either read 512 bytes or less than 512 bytes in one read.
             if ((count - read_bytes) > PIPE_READ_SIZE)
-                read_bytes += chrecv(MY_STDIN, received_data->data + read_bytes,
+                read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
                                      PIPE_READ_SIZE);
             else
-                read_bytes += chrecv(MY_STDIN, received_data->data + read_bytes,
+                read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
                                      count - read_bytes);
         }
         // read_bytes = 0;
