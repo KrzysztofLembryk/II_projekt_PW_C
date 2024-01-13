@@ -34,31 +34,23 @@ int msleep(long msec)
     return res;
 }
 
-typedef struct DataPack
-{
-    int tag;
-    int count;
-    uint8_t *data;
-} DataPack;
-
-
 typedef struct QElem
 {
     int proc_rank;
     int tag;
     int count;
-    DataPack *data_pack;
+    uint8_t *data;
     struct QElem *prev;
     struct QElem *next;
 } QElem;
 
-QElem *QElem_make_new(int _rank, int _tag, int _count, DataPack *_data)
+QElem *QElem_make_new(int _rank, int _tag, int _count, uint8_t *_data)
 {
     QElem *elem = (QElem *)malloc(sizeof(QElem));
     elem->proc_rank = _rank;
     elem->tag = _tag;
     elem->count = _count;
-    elem->data_pack = _data;
+    elem->data = _data;
     elem->prev = NULL;
     elem->next = NULL;
     return elem;
@@ -66,8 +58,7 @@ QElem *QElem_make_new(int _rank, int _tag, int _count, DataPack *_data)
 
 void QElem_destruct(QElem *elem)
 {
-    free(elem->data_pack->data);
-    free(elem->data_pack);
+    free(elem->data);
     free(elem);
 }
 
@@ -312,11 +303,9 @@ void *read_what_other_proc_send(void *arg)
     DataPack *received_data;
 
     // int ret_code;
-   
 
     // This set will be used to wait for either tag from src proc or parent proc
     fd_set dscrpt_set_src_and_parent;
-    
 
     while (true)
     {
@@ -326,7 +315,7 @@ void *read_what_other_proc_send(void *arg)
         if (mimpi_handler.proc_left_MIMPI[parent_rank])
             break;
 
-        received_data = (DataPack*)malloc(sizeof(DataPack));
+        received_data = (DataPack *)malloc(sizeof(DataPack));
         // We init our fd_set with two dscrpt that we want to read from.
         // LNIUX MAN:
         // Upon return, each of the file descriptor sets is
@@ -343,16 +332,16 @@ void *read_what_other_proc_send(void *arg)
         // that someone wrote sth to MY_STDIN.
         if (FD_ISSET(MY_STDIN, &dscrpt_set_src_and_parent))
         {
-            
+
             // We send packages (structs) through pipes
             chrecv(MY_STDIN, &(received_data->tag), sizeof(tag));
-            
+
             tag = received_data->tag;
         }
         else
         {
             // printf("thread received tag from parent proc\n");
-            chrecv(MY_STDIN_FROM_PARENT,  &(received_data->tag), sizeof(tag));
+            chrecv(MY_STDIN_FROM_PARENT, &(received_data->tag), sizeof(tag));
             tag = received_data->tag;
         }
 
@@ -381,9 +370,9 @@ void *read_what_other_proc_send(void *arg)
         // could copy this data.
         chrecv(MY_STDIN, &(received_data->count), sizeof(count));
         count = received_data->count;
-        
+
         received_data->data = calloc(count, sizeof(uint8_t));
-        
+
         int read_bytes = 0;
         // Count might be greater than pipes buffor so we need to read from
         // buffor till read_bytes are equal to our count.
@@ -401,7 +390,7 @@ void *read_what_other_proc_send(void *arg)
                 read_bytes += chrecv(MY_STDIN, received_data->data + read_bytes,
                                      count - read_bytes);
         }
-        //read_bytes = 0;
+        // read_bytes = 0;
 
         QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
 
@@ -485,52 +474,6 @@ void close_redundant_dscrpt()
     }
 }
 
-void close_all_left_dscrptrs()
-{
-    int nbr_proc = MIMPI_World_size();
-    int my_rank = MIMPI_World_rank();
-    int curr_read_dscrpt;
-    int i;
-    // printf("MIMPI FINALIZE\n");
-    for (int curr_proc = 0; curr_proc < nbr_proc; curr_proc++)
-    {
-        curr_read_dscrpt = OFFSET + curr_proc * 2 * nbr_proc;
-
-        if (curr_proc == my_rank)
-        {
-            i = 0;
-            // printf("curr_proc == my_rank\n");
-            while (i < nbr_proc)
-            {
-                // In my_rank process we left opened all write ends of pipes,
-                // so we need to close them now.
-                if (i != my_rank)
-                {
-                    // printf("closing read: %d\n", curr_read_dscrpt + 1);
-                    close(curr_read_dscrpt + 1);
-                }
-                else
-                {
-                    close(curr_read_dscrpt);
-                    close(curr_read_dscrpt + 1);
-                }
-
-                i++;
-                curr_read_dscrpt += 2;
-            }
-        }
-        else // curr_proc != my_rank
-        {
-            // We need to close only reading ends of pipes from other process'
-            // at our indexes, cause all other ends are already closed.
-            curr_read_dscrpt += 2 * my_rank;
-            // printf("closing %d\n", curr_read_dscrpt);
-
-            close(curr_read_dscrpt);
-        }
-    }
-}
-
 void MIMPI_Init(bool enable_deadlock_detection)
 {
     channels_init();
@@ -590,6 +533,52 @@ void send_finalize_to_all_other_proc()
         {
             MY_STDOUT = MY_STARTING_DSCRPT + 2 * proc_rank + 1;
             chsend(MY_STDOUT, &tag, sizeof(tag));
+        }
+    }
+}
+
+void close_all_left_dscrptrs()
+{
+    int nbr_proc = MIMPI_World_size();
+    int my_rank = MIMPI_World_rank();
+    int curr_read_dscrpt;
+    int i;
+    // printf("MIMPI FINALIZE\n");
+    for (int curr_proc = 0; curr_proc < nbr_proc; curr_proc++)
+    {
+        curr_read_dscrpt = OFFSET + curr_proc * 2 * nbr_proc;
+
+        if (curr_proc == my_rank)
+        {
+            i = 0;
+            // printf("curr_proc == my_rank\n");
+            while (i < nbr_proc)
+            {
+                // In my_rank process we left opened all write ends of pipes,
+                // so we need to close them now.
+                if (i != my_rank)
+                {
+                    // printf("closing read: %d\n", curr_read_dscrpt + 1);
+                    close(curr_read_dscrpt + 1);
+                }
+                else
+                {
+                    close(curr_read_dscrpt);
+                    close(curr_read_dscrpt + 1);
+                }
+
+                i++;
+                curr_read_dscrpt += 2;
+            }
+        }
+        else // curr_proc != my_rank
+        {
+            // We need to close only reading ends of pipes from other process'
+            // at our indexes, cause all other ends are already closed.
+            curr_read_dscrpt += 2 * my_rank;
+            // printf("closing %d\n", curr_read_dscrpt);
+
+            close(curr_read_dscrpt);
         }
     }
 }
@@ -659,9 +648,16 @@ MIMPI_Retcode MIMPI_Send(
         return MIMPI_ERROR_NO_SUCH_RANK;
 
     // We want array of bytes, so we need to cast void ptr to unint8_t.
-    DataPack
     uint8_t *data_to_send = (uint8_t *)data;
 
+    // We create buffer in which we store all data we want to send in order to
+    // invoke only one send. Firstly we store tag, than count than rest of data
+    unsigned long buffer_size = sizeof(tag) + sizeof(count) + count * sizeof(uint8_t);
+    void *buffer = malloc(buffer_size);
+    memcpy(buffer, &tag, sizeof(tag));
+    memcpy(buffer + sizeof(tag), &count, sizeof(count));
+    memcpy(buffer + sizeof(tag) + sizeof(count), data_to_send,
+           count * sizeof(uint8_t));
     // printf("data to send: ");
     // for (int i = 0; i < count; i++)
     //     printf("%hhu ", data_to_send[i]);
@@ -698,10 +694,9 @@ MIMPI_Retcode MIMPI_Send(
 void cpy_rec_data_to_dest_set_wanted_flags(void *data, QElem *elem, int count,
                                            int src)
 {
-    memcpy(data, elem->data_pack->data, count * sizeof(elem->data_pack[0]));
-    free(elem->data_pack->data);
-    free(elem->data_pack);
-    free(elem);
+    memcpy(data, elem->data->data, count * sizeof(elem->data[0]));
+    QElem_destruct(elem);
+
     mimpi_handler.wanted_count = COUNT_NOT_WANTED;
     mimpi_handler.wanted_rank = RANK_NOT_WANTED;
     mimpi_handler.wanted_tag = TAG_NOT_WANTED;
@@ -808,7 +803,7 @@ void print_tag(int tag)
 void init_sons_parent_my_rank_idx(int *my_rank, int *parent, int *left_son, int *right_son)
 {
     *my_rank = MIMPI_World_rank();
-    if(*my_rank % 2 == 0)
+    if (*my_rank % 2 == 0)
         *parent = ((*my_rank) / 2) - 1;
     else
         *parent = ((*my_rank) / 2);
@@ -893,7 +888,7 @@ MIMPI_Retcode Barrier_not_root(MIMPI_Retcode ret_val_recv1,
 
         // printf("proc : %d  receiving from both sons SUCCES, informing parent : %d\n", my_rank, parent);
         inform_retcode = inform_parent_about_state_of_barrier(MAKE_MIMPI_BARRIER, FIRST_STAGE_TAG);
-        //printf("proc : %d after successfully informed parent\n", my_rank);
+        // printf("proc : %d after successfully informed parent\n", my_rank);
         if (inform_retcode == MIMPI_ERROR_REMOTE_FINISHED)
         {
             // printf("proc : %d after success, informed parent, ERROR\n", my_rank);
@@ -904,7 +899,7 @@ MIMPI_Retcode Barrier_not_root(MIMPI_Retcode ret_val_recv1,
     // We successfully received messages from our sons, and sending message
     // to our parent was also successful, thus we need to wait for info from
     // him whether release barrier or barrier is broken.
-    //printf("proc : %d SECOND STAGE waiting\n", my_rank);
+    // printf("proc : %d SECOND STAGE waiting\n", my_rank);
     ret_val_recv1 = MIMPI_Recv(tag1, sizeof(int), parent, SECOND_STAGE_TAG);
     // printf("proc : %d SECOND STAGE, after recv message: ", my_rank);
     // print_tag(*tag1);
@@ -959,7 +954,7 @@ MIMPI_Retcode Barrier_root(MIMPI_Retcode ret_val_recv1,
     }
 
     message = RELEASE_MIMPI_BARRIER;
-    //printf("ROOT releasing MIMPI BARRIER\n");
+    // printf("ROOT releasing MIMPI BARRIER\n");
     if (left_son < MIMPI_World_size())
         MIMPI_Send(&message, sizeof(message), left_son, SECOND_STAGE_TAG);
     if (right_son < MIMPI_World_size())
@@ -986,7 +981,7 @@ MIMPI_Retcode MIMPI_Barrier()
     // We wait for info from our left and right son, whether our whole subtree
     // is waiting.
 
-    //printf("BARRIER proc : %d, waiting for msg from sons\n", my_rank);
+    // printf("BARRIER proc : %d, waiting for msg from sons\n", my_rank);
 
     if (left_son < MIMPI_World_size())
         ret_val_recv1 = MIMPI_Recv(tag1, sizeof(int), left_son, FIRST_STAGE_TAG);
@@ -1007,14 +1002,14 @@ MIMPI_Retcode MIMPI_Barrier()
     if (my_rank != 0)
     {
         main_retcode = Barrier_not_root(ret_val_recv1, ret_val_recv2, tag1, tag2);
-        //printf("proc : %d RETURNIG\n", my_rank);
+        // printf("proc : %d RETURNIG\n", my_rank);
         free(tag1);
         free(tag2);
 
         return main_retcode;
     }
-    //printf("Root starts doing stuff\n");
-    // We got information that both of our sons
+    // printf("Root starts doing stuff\n");
+    //  We got information that both of our sons
     main_retcode = Barrier_root(ret_val_recv1, ret_val_recv2, tag1, tag2);
 
     free(tag1);
