@@ -38,7 +38,7 @@ typedef struct QElem
     int proc_rank;
     int tag;
     int count;
-    uint8_t *data;
+    uint8_t *data_pack;
     struct QElem *prev;
     struct QElem *next;
 } QElem;
@@ -49,7 +49,7 @@ QElem *QElem_make_new(int _rank, int _tag, int _count, uint8_t *_data)
     elem->proc_rank = _rank;
     elem->tag = _tag;
     elem->count = _count;
-    elem->data = _data;
+    elem->data_pack = _data;
     elem->prev = NULL;
     elem->next = NULL;
     return elem;
@@ -81,7 +81,7 @@ void queue_destruct(QueueList *q)
     while(curr != NULL)
     {
         prev = curr->prev;
-        free(curr->data);
+        free(curr->data_pack);
         free(curr);
         curr = prev;
     }
@@ -604,8 +604,8 @@ MIMPI_Retcode MIMPI_Send(
 void cpy_rec_data_to_dest_set_wanted_flags(void *data, QElem *elem, int count,
                                        int src)
 {
-    memcpy(data, elem->data, count * sizeof(elem->data[0]));
-    free(elem->data);
+    memcpy(data, elem->data_pack, count * sizeof(elem->data_pack[0]));
+    free(elem->data_pack);
     free(elem);
     mimpi_handler.wanted_count = -1;
     mimpi_handler.wanted_rank = -1;

@@ -34,26 +34,41 @@ int msleep(long msec)
     return res;
 }
 
+typedef struct DataPack
+{
+    int tag;
+    int count;
+    uint8_t *data;
+} DataPack;
+
+
 typedef struct QElem
 {
     int proc_rank;
     int tag;
     int count;
-    uint8_t *data;
+    DataPack *data_pack;
     struct QElem *prev;
     struct QElem *next;
 } QElem;
 
-QElem *QElem_make_new(int _rank, int _tag, int _count, uint8_t *_data)
+QElem *QElem_make_new(int _rank, int _tag, int _count, DataPack *_data)
 {
     QElem *elem = (QElem *)malloc(sizeof(QElem));
     elem->proc_rank = _rank;
     elem->tag = _tag;
     elem->count = _count;
-    elem->data = _data;
+    elem->data_pack = _data;
     elem->prev = NULL;
     elem->next = NULL;
     return elem;
+}
+
+void QElem_destruct(QElem *elem)
+{
+    free(elem->data_pack->data);
+    free(elem->data_pack);
+    free(elem);
 }
 
 bool QElem_is_the_same(QElem *el, int rank, int tag, int count)
@@ -77,14 +92,13 @@ void queue_init(QueueList *q)
 
 void queue_destruct(QueueList *q)
 {
-    QElem *curr = q->front;
+    QElem *curr_elem = q->front;
     QElem *prev;
-    while (curr != NULL)
+    while (curr_elem != NULL)
     {
-        prev = curr->prev;
-        free(curr->data);
-        free(curr);
-        curr = prev;
+        prev = curr_elem->prev;
+        QElem_destruct(curr_elem);
+        curr_elem = prev;
     }
 
     q->front = NULL;
@@ -119,6 +133,7 @@ QElem *queue_find_elem(QueueList *q, int rank, int tag, int count)
     {
         if (QElem_is_the_same(curr_elem, rank, tag, count))
         {
+            // Found first occurence of wanted data, so we remove it from lst.
             if (curr_elem->next != NULL)
             {
                 curr_elem->next->prev = curr_elem->prev;
@@ -294,13 +309,14 @@ void *read_what_other_proc_send(void *arg)
     // We receive tag, then count then data.
     int tag;
     int count;
-    uint8_t *received_data;
+    DataPack *received_data;
 
     // int ret_code;
-    int read_bytes = 0;
+   
 
     // This set will be used to wait for either tag from src proc or parent proc
     fd_set dscrpt_set_src_and_parent;
+    
 
     while (true)
     {
@@ -310,6 +326,7 @@ void *read_what_other_proc_send(void *arg)
         if (mimpi_handler.proc_left_MIMPI[parent_rank])
             break;
 
+        received_data = (DataPack*)malloc(sizeof(DataPack));
         // We init our fd_set with two dscrpt that we want to read from.
         // LNIUX MAN:
         // Upon return, each of the file descriptor sets is
@@ -326,13 +343,17 @@ void *read_what_other_proc_send(void *arg)
         // that someone wrote sth to MY_STDIN.
         if (FD_ISSET(MY_STDIN, &dscrpt_set_src_and_parent))
         {
-            // printf("thread received tag from src proc\n");
-            chrecv(MY_STDIN, &tag, sizeof(tag));
+            
+            // We send packages (structs) through pipes
+            chrecv(MY_STDIN, &(received_data->tag), sizeof(tag));
+            
+            tag = received_data->tag;
         }
         else
         {
             // printf("thread received tag from parent proc\n");
-            chrecv(MY_STDIN_FROM_PARENT, &tag, sizeof(tag));
+            chrecv(MY_STDIN_FROM_PARENT,  &(received_data->tag), sizeof(tag));
+            tag = received_data->tag;
         }
 
         // printf("Got tag %d\n", tag);
@@ -341,6 +362,7 @@ void *read_what_other_proc_send(void *arg)
         if (tag == PARENT_PROC_IN_FINALIZE)
         {
             // printf("thread breaking : parent proc in finalize\n");
+            free(received_data);
             break;
         }
         else if (tag == SRC_PROC_IN_FINALIZE)
@@ -349,6 +371,7 @@ void *read_what_other_proc_send(void *arg)
             // that it left and if needed wake up my parent process.
             // printf("thread breaking : src proc left mimpi, informing parent\n");
             inform_that_SRCproc_left_MIMPI_mutex(source_rank);
+            free(received_data);
             break;
         }
 
@@ -356,9 +379,12 @@ void *read_what_other_proc_send(void *arg)
         // we need to allocate that many bytes in our received_data variable
         // so that we could store all read data and in future parent process
         // could copy this data.
-        chrecv(MY_STDIN, &count, sizeof(int));
-        received_data = calloc(count, sizeof(uint8_t));
-
+        chrecv(MY_STDIN, &(received_data->count), sizeof(count));
+        count = received_data->count;
+        
+        received_data->data = calloc(count, sizeof(uint8_t));
+        
+        int read_bytes = 0;
         // Count might be greater than pipes buffor so we need to read from
         // buffor till read_bytes are equal to our count.
         while (read_bytes < count)
@@ -369,13 +395,13 @@ void *read_what_other_proc_send(void *arg)
             // We can only read PIPE_READ_SIZE bytes atomically from pipe, so we
             // either read 512 bytes or less than 512 bytes in one read.
             if ((count - read_bytes) > PIPE_READ_SIZE)
-                read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
+                read_bytes += chrecv(MY_STDIN, received_data->data + read_bytes,
                                      PIPE_READ_SIZE);
             else
-                read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
+                read_bytes += chrecv(MY_STDIN, received_data->data + read_bytes,
                                      count - read_bytes);
         }
-        read_bytes = 0;
+        //read_bytes = 0;
 
         QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
 
@@ -633,6 +659,7 @@ MIMPI_Retcode MIMPI_Send(
         return MIMPI_ERROR_NO_SUCH_RANK;
 
     // We want array of bytes, so we need to cast void ptr to unint8_t.
+    DataPack
     uint8_t *data_to_send = (uint8_t *)data;
 
     // printf("data to send: ");
@@ -671,8 +698,9 @@ MIMPI_Retcode MIMPI_Send(
 void cpy_rec_data_to_dest_set_wanted_flags(void *data, QElem *elem, int count,
                                            int src)
 {
-    memcpy(data, elem->data, count * sizeof(elem->data[0]));
-    free(elem->data);
+    memcpy(data, elem->data_pack->data, count * sizeof(elem->data_pack[0]));
+    free(elem->data_pack->data);
+    free(elem->data_pack);
     free(elem);
     mimpi_handler.wanted_count = COUNT_NOT_WANTED;
     mimpi_handler.wanted_rank = RANK_NOT_WANTED;
