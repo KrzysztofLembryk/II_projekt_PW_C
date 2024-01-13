@@ -362,8 +362,8 @@ void *read_what_other_proc_send(void *arg)
         // we need to allocate that many bytes in our received_data variable
         // so that we could store all read data and in future parent process
         // could copy this data.
-        chrecv(MY_STDIN, count, sizeof(count));
-        
+        chrecv(MY_STDIN, &count, sizeof(count));
+        printf("THREAD received count = %d\n", count);
         received_data = calloc(count, sizeof(uint8_t));
         int read_bytes = 0;
         // Count might be greater than pipes buffor so we need to read from
@@ -642,17 +642,29 @@ MIMPI_Retcode MIMPI_Send(
     // We want array of bytes, so we need to cast void ptr to unint8_t.
     uint8_t *data_to_send = (uint8_t *)data;
 
-    // We create buffer in which we store all data we want to send in order to
-    // invoke only one send. Firstly we store tag, than count than rest of data
+    // We create buffer in which we store all data we want in specific order so 
+    // that we can send it via only one send, and that receiver knows our order 
+    // Firstly we store tag, than count than rest of data.
     unsigned long buffer_size = sizeof(tag) + sizeof(count) + count * sizeof(uint8_t);
     void *buffer = malloc(buffer_size);
+    // We memcpy data to our buffer, starting from ptr buffer, but then we need
+    // to move our starting pointer by number of saved bytes.
     memcpy(buffer, &tag, sizeof(tag));
     memcpy(buffer + sizeof(tag), &count, sizeof(count));
     memcpy(buffer + sizeof(tag) + sizeof(count), data_to_send,
            count * sizeof(uint8_t));
-    // printf("data to send: ");
+        
+    // printf("data to send in buffer: \n");
     // for (int i = 0; i < count; i++)
-    //     printf("%hhu ", data_to_send[i]);
+    // {
+    //     if(i == 0)
+    //         printf("tag:%d ", *((int*)buffer));
+    //     else if(i == 1)
+    //         printf("count:%d ", *(int*)(buffer + sizeof(tag)));
+    //     else
+    //         printf("%hhu ", ((uint8_t*)buffer)[i]);
+    // }
+        
     // printf("\n");
 
     int my_rank = MIMPI_World_rank();
@@ -669,13 +681,15 @@ MIMPI_Retcode MIMPI_Send(
     // write dscrpt we need to add 1.
     int MY_STDOUT = MY_STARTING_DSCRPT + 2 * destination + 1;
 
-    int send_ret_code = chsend(MY_STDOUT, &tag, sizeof(tag));
-    // printf("chsend tag: ret code %d\n", send_ret_code);
-    send_ret_code = chsend(MY_STDOUT, &count, sizeof(count));
-    // printf("chsend count: ret code %d\n", send_ret_code);
-    send_ret_code = chsend(MY_STDOUT, data_to_send, count);
+    //  We perform only one send, cause all data is stored in order in buffer.
+    int send_ret_code = chsend(MY_STDOUT, buffer, buffer_size);
+    // // printf("chsend tag: ret code %d\n", send_ret_code);
+    // send_ret_code = chsend(MY_STDOUT, &count, sizeof(count));
+    // // printf("chsend count: ret code %d\n", send_ret_code);
+    // send_ret_code = chsend(MY_STDOUT, data_to_send, count);
 
     // printf("chsend data: ret code %d\n", send_ret_code);
+    free(buffer);
 
     if (send_ret_code == -1)
         return MIMPI_ERROR_REMOTE_FINISHED;
@@ -686,7 +700,7 @@ MIMPI_Retcode MIMPI_Send(
 void cpy_rec_data_to_dest_set_wanted_flags(void *data, QElem *elem, int count,
                                            int src)
 {
-    memcpy(data, elem->data->data, count * sizeof(elem->data[0]));
+    memcpy(data, elem->data, count * sizeof(elem->data[0]));
     QElem_destruct(elem);
 
     mimpi_handler.wanted_count = COUNT_NOT_WANTED;

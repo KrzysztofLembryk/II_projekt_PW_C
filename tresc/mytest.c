@@ -35,6 +35,8 @@ int m_sleep(long msec)
     return res;
 }
 
+// compilation:
+// gcc --std=gnu11 -Wall -DDEBUG -pthread mytest.c channel.c mimpi.c mimpi_common.c -o mytest
 
 int main(int argc, char *argv[])
 {
@@ -71,7 +73,7 @@ int main(int argc, char *argv[])
         //m_sleep(1);
         printf("--------Ended receiving--------\n\n");
         printf("data received: ");
-        for(int i = 0; i < 1; i++)
+        for(int i = 0; i < data_size; i++)
            printf("%hhu ", recv_data[i]);
         printf("\n");
     }
