@@ -804,21 +804,21 @@ MIMPI_Retcode MIMPI_Recv(
 
 void print_Ret_code(MIMPI_Retcode code)
 {
-    if (code == 0)
+    if (code == MIMPI_SUCCESS)
         printf("MIMPI_SUCCESS");
-    if (code == 3)
+    if (code == MIMPI_ERROR_REMOTE_FINISHED)
         printf("MIMPI_ERROR_REMOTE_FINISHED");
 }
 
 void print_tag(int tag)
 {
-    if (tag == -6)
+    if (tag == MAKE_MIMPI_BARRIER)
         printf("MAKE_MIMPI_BARRIER");
-    if (tag == -7)
+    if (tag == RELEASE_MIMPI_BARRIER)
         printf("RELEASE_MIMPI_BARRIER");
-    if (tag == -8)
+    if (tag == CANNOT_SYNCH_BARRIER)
         printf("CANNOT_SYNCH_BARRIER");
-    if (tag == -9)
+    if (tag == DEFAULT_TAG)
         printf("DEFAULT_TAG");
 }
 
