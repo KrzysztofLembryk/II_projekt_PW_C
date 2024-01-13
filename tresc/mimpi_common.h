@@ -76,6 +76,6 @@ _Noreturn extern void fatal(const char* fmt, ...);
 #define MAKE_MIMPI_BARRIER -6
 #define RELEASE_MIMPI_BARRIER -7
 #define CANNOT_SYNCH_BARRIER -8
-
+#define DEFAULT_TAG -9
 
 #endif // MIMPI_COMMON_H
