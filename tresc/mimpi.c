@@ -13,39 +13,17 @@
 
 #include <errno.h>
 
-// int msleep(long msec)
-// {
-//     struct timespec ts;
-//     int res;
-
-//     if (msec < 0)
-//     {
-//         errno = EINVAL;
-//         return -1;
-//     }
-
-//     ts.tv_sec = msec / 1000;
-//     ts.tv_nsec = (msec % 1000) * 1000000;
-
-//     do
-//     {
-//         res = nanosleep(&ts, &ts);
-//     } while (res && errno == EINTR);
-
-//     return res;
-// }
-
 typedef struct QElem
 {
     int proc_rank;
     int tag;
     int count;
-    uint8_t *data;
+    void *data;
     struct QElem *prev;
     struct QElem *next;
 } QElem;
 
-QElem *QElem_make_new(int _rank, int _tag, int _count, uint8_t *_data)
+QElem *QElem_make_new(int _rank, int _tag, int _count, void *_data)
 {
     QElem *elem = (QElem *)malloc(sizeof(QElem));
     elem->proc_rank = _rank;
@@ -338,7 +316,6 @@ void *read_what_other_proc_send(void *arg)
         // that someone wrote sth to MY_STDIN.
         if (FD_ISSET(MY_STDIN, &dscrpt_set_src_and_parent))
         {
-
             // We get message from source proc.
             chrecv(MY_STDIN, &tag, sizeof(tag));
         }
@@ -678,19 +655,18 @@ MIMPI_Retcode MIMPI_Send(
         return MIMPI_ERROR_NO_SUCH_RANK;
 
     // We want array of bytes, so we need to cast void ptr to unint8_t.
-    uint8_t *data_to_send = (uint8_t *)data;
+    
 
     // We create buffer in which we store all data we want in specific order so
     // that we can send it via only one send, and that receiver knows our order
     // Firstly we store tag, than count than rest of data.
-    unsigned long buffer_size = sizeof(tag) + sizeof(count) + count * sizeof(uint8_t);
+    unsigned long buffer_size = sizeof(tag) + sizeof(count) + count;
     void *buffer = malloc(buffer_size);
     // We memcpy data to our buffer, starting from ptr buffer, but then we need
     // to move our starting pointer by number of saved bytes.
     memcpy(buffer, &tag, sizeof(tag));
     memcpy(buffer + sizeof(tag), &count, sizeof(count));
-    memcpy(buffer + sizeof(tag) + sizeof(count), data_to_send,
-           count * sizeof(uint8_t));
+    memcpy(buffer + sizeof(tag) + sizeof(count), data, count);
 
     // printf("data to send in buffer: \n");
     // for (int i = 0; i < count; i++)
