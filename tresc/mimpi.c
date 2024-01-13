@@ -363,7 +363,7 @@ void *read_what_other_proc_send(void *arg)
         // so that we could store all read data and in future parent process
         // could copy this data.
         chrecv(MY_STDIN, &count, sizeof(count));
-        printf("THREAD received count = %d\n", count);
+        
         received_data = calloc(count, sizeof(uint8_t));
         int read_bytes = 0;
         // Count might be greater than pipes buffor so we need to read from
