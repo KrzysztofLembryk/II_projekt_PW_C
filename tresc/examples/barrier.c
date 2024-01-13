@@ -10,8 +10,8 @@ int main(int argc, char **argv)
     int const process_rank = MIMPI_World_rank();
     int const size_of_cluster = MIMPI_World_size();
 
-    if (process_rank == 1)
-        sleep(1);
+    // if (process_rank == 1)
+    //     sleep(1);
 
     for (int i = 0; i < size_of_cluster; i++)
     {
@@ -20,8 +20,8 @@ int main(int argc, char **argv)
             printf("Hello World from process %d of %d\n", process_rank, size_of_cluster);
             fflush(stdout);
         }
-        if (process_rank == 1)
-            sleep(2);
+        // if (process_rank == 1)
+        //     sleep(2);
         ASSERT_MIMPI_OK(MIMPI_Barrier());
     }
 

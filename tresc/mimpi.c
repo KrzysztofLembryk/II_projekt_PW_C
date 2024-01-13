@@ -908,12 +908,12 @@ MIMPI_Retcode Barrier_root(MIMPI_Retcode ret_val_recv1,
     int message;
     // We are root, so if one of our sons returned error we send Cannot synch
     // barrier to our sons
-    printf("root ret val of son1: "); print_Ret_code(ret_val_recv1); 
-    printf("\n");
-    printf("root ret val of son2: "); print_Ret_code(ret_val_recv2); 
-    printf("\n");
-    printf("tag msg from left son: "); print_tag(*tag1); printf("\n");
-    printf("tag msg from right son: "); print_tag(*tag2); printf("\n");
+    // printf("root ret val of son1: "); print_Ret_code(ret_val_recv1); 
+    // printf("\n");
+    // printf("root ret val of son2: "); print_Ret_code(ret_val_recv2); 
+    // printf("\n");
+    // printf("tag msg from left son: "); print_tag(*tag1); printf("\n");
+    // printf("tag msg from right son: "); print_tag(*tag2); printf("\n");
     if ((ret_val_recv1 != MIMPI_SUCCESS || ret_val_recv2 != MIMPI_SUCCESS) ||
         (*tag1 == CANNOT_SYNCH_BARRIER || *tag2 == CANNOT_SYNCH_BARRIER))
     {
@@ -956,15 +956,15 @@ MIMPI_Retcode MIMPI_Barrier()
     // We wait for info from our left and right son, whether our whole subtree
     // is waiting.
 
-    printf("BARRIER proc : %d, waiting for msg from sons\n", my_rank);
+    //printf("BARRIER proc : %d, waiting for msg from sons\n", my_rank);
 
     if (left_son < MIMPI_World_size())
         ret_val_recv1 = MIMPI_Recv(tag1, sizeof(int), left_son, FIRST_STAGE_TAG);
     if (right_son < MIMPI_World_size())
         ret_val_recv2 = MIMPI_Recv(tag2, sizeof(int), right_son, FIRST_STAGE_TAG);
-    printf("BARRIER proc : %d, got msgs from sons\n", my_rank);
-    printf("msg from left son: "); print_tag(*tag1); printf("\n");
-    printf("msg from right son: "); print_tag(*tag2); printf("\n");
+    // printf("BARRIER proc : %d, got msgs from sons\n", my_rank);
+    // printf("msg from left son: "); print_tag(*tag1); printf("\n");
+    // printf("msg from right son: "); print_tag(*tag2); printf("\n");
     if (my_rank != 0)
     {
         main_retcode = Barrier_not_root(ret_val_recv1, ret_val_recv2, tag1, tag2);
@@ -974,7 +974,7 @@ MIMPI_Retcode MIMPI_Barrier()
 
         return main_retcode;
     }
-    printf("Root starts doing stuff\n");
+    //printf("Root starts doing stuff\n");
     // We got information that both of our sons
     main_retcode = Barrier_root(ret_val_recv1, ret_val_recv2, tag1, tag2);
 
