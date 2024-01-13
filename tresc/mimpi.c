@@ -393,6 +393,8 @@ void *read_what_other_proc_send(void *arg)
     return NULL;
 }
 
+//----------MIMPI_INIT----------
+
 /**
  * We close all writing descrpt to other processes, we only need to read what
  * they wrote. We write only to our pipe, so that each process knows from whom
@@ -492,6 +494,8 @@ void MIMPI_Init(bool enable_deadlock_detection)
     }
 }
 
+//----------MIMPI_FINALIZE----------
+
 void send_finalize_to_all_threads()
 {
     int my_rank = MIMPI_World_rank();
@@ -505,7 +509,11 @@ void send_finalize_to_all_threads()
     for (int i = 0; i < nbr_proc; i++)
     {
         if (i != my_rank)
-            chsend(MY_STDOUT, &tag, sizeof(tag));
+        {
+            if(!mimpi_handler.proc_left_MIMPI[i])
+                chsend(MY_STDOUT, &tag, sizeof(tag));
+        }
+            
     }
 }
 
@@ -523,8 +531,11 @@ void send_finalize_to_all_other_proc()
     {
         if (my_rank != proc_rank)
         {
-            MY_STDOUT = MY_STARTING_DSCRPT + 2 * proc_rank + 1;
-            chsend(MY_STDOUT, &tag, sizeof(tag));
+            if(!mimpi_handler.proc_left_MIMPI[proc_rank])
+            {
+                MY_STDOUT = MY_STARTING_DSCRPT + 2 * proc_rank + 1;
+                chsend(MY_STDOUT, &tag, sizeof(tag));
+            }
         }
     }
 }
@@ -583,21 +594,43 @@ void MIMPI_Finalize()
 
     ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
 
-    send_finalize_to_all_threads();
+    int rank = MIMPI_World_rank();
+
+    if(rank == 4)
+        printf("proc : %d, sending finalize to proc\n", rank);
+
     send_finalize_to_all_other_proc();
 
+    if(rank == 4)
+        printf("proc : %d, sending finalize to threads\n", rank);
+
+    send_finalize_to_all_threads();
+    
+    if(rank == 4)
+        printf("proc : %d, joining threads\n", rank);
     for (int i = 0; i < mimpi_handler.nbr_of_proc; i++)
     {
         if (i != MIMPI_World_rank())
             ASSERT_ZERO(pthread_join(mimpi_handler.reading_threads[i], NULL));
     }
 
+    if(rank == 4)
+        printf("proc : %d, threads joined, closing rest of dscrptrs\n", rank);
+
     close_all_left_dscrptrs();
+
+    if(rank == 4)
+        printf("proc : %d, destructing handler\n", rank);
 
     handler_destruct(&mimpi_handler);
 
+    if(rank == 4)
+        printf("proc : %d, channels finalize\n", rank);
+
     channels_finalize();
 }
+
+//----------MIMPI_SEND----------
 
 int MIMPI_World_size()
 {
@@ -625,9 +658,6 @@ int MIMPI_World_rank()
     return my_rank;
 }
 
-/**
- *
- */
 MIMPI_Retcode MIMPI_Send(
     void const *data,
     int count,
@@ -696,6 +726,8 @@ MIMPI_Retcode MIMPI_Send(
 
     return MIMPI_SUCCESS;
 }
+
+//----------MIMPI_RECV----------
 
 void cpy_rec_data_to_dest_set_wanted_flags(void *data, QElem *elem, int count,
                                            int src)
@@ -1039,7 +1071,7 @@ MIMPI_Retcode MIMPI_Barrier()
             printf("proc : %d RETURNIG from barrier func\n", my_rank);
         free(tag1);
         free(tag2);
-        
+
         return main_retcode;
     }
     // printf("Root starts doing stuff\n");
