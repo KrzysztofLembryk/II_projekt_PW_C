@@ -46,19 +46,26 @@ int main(int argc, char **argv)
     char number = 42;
     if (world_rank == 0)
     {
+        //printf("Proc %d sleeping\n", world_rank);
         msleep(500);
+        //printf("Proc %d starting\n", world_rank);
     }
     else if (world_rank == 1)
     {
+        //printf("Proc %d starting\n", world_rank);
         ASSERT_MIMPI_RETCODE(MIMPI_Recv(&number, 1, 0, tag), MIMPI_ERROR_REMOTE_FINISHED);
+        //printf("Proc %d received1 error\n", world_rank);
         if (MIMPI_World_size() > 6)
             ASSERT_MIMPI_RETCODE(MIMPI_Send(&number, 1, 0, tag), MIMPI_ERROR_REMOTE_FINISHED);
         ASSERT_MIMPI_RETCODE(MIMPI_Recv(&number, 1, 0, tag), MIMPI_ERROR_REMOTE_FINISHED);
+        //printf("Proc %d received2 error\n", world_rank);
         assert(number == 42);
     }
     else if (world_rank == 2)
     {
+        //printf("Proc %d sleeping\n", world_rank);
         msleep(1000);
+        //printf("Proc %d starting\n", world_rank);
         ASSERT_MIMPI_RETCODE(MIMPI_Recv(&number, 1, 0, tag), MIMPI_ERROR_REMOTE_FINISHED);
         assert(number == 42);
         ASSERT_MIMPI_RETCODE(MIMPI_Recv(&number, 1, 0, tag), MIMPI_ERROR_REMOTE_FINISHED);
@@ -66,22 +73,29 @@ int main(int argc, char **argv)
     }
     else if (world_rank == 3)
     {
+        //printf("Proc %d starting\n", world_rank);
         ASSERT_MIMPI_RETCODE(MIMPI_Barrier(), MIMPI_ERROR_REMOTE_FINISHED);
     }
     else if (world_rank == 4)
     {
+        //printf("Proc %d starting\n", world_rank);
         // heurystyczne założenie że chwrite zakończy się z błędem "Zamknięty odpbiorca".
         setenv("CHANNELS_WRITE_DELAY", "1000", true);
         ASSERT_MIMPI_RETCODE(MIMPI_Barrier(), MIMPI_ERROR_REMOTE_FINISHED);
+        //printf("Proc %d returned from Barrier\n", world_rank);
     }
     else if (world_rank == 5)
     {
+        //printf("Proc %d sleeping\n", world_rank);
         msleep(1000);
+        //printf("Proc %d starting\n", world_rank);
         ASSERT_MIMPI_RETCODE(MIMPI_Barrier(), MIMPI_ERROR_REMOTE_FINISHED);
     }
     else if (world_rank == 6)
     {
+        //printf("Proc %d sleeping\n", world_rank);
         msleep(1000);
+        //printf("Proc %d starting\n", world_rank);
         ASSERT_MIMPI_RETCODE(MIMPI_Send(&number, 1, 0, tag), MIMPI_ERROR_REMOTE_FINISHED);
     }
 
