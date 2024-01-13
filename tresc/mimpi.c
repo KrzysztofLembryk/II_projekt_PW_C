@@ -306,7 +306,7 @@ void *read_what_other_proc_send(void *arg)
     // We receive tag, then count then data.
     int tag;
     int count;
-    uint8_t *received_data;
+    void *received_data;
 
     // int ret_code;
 
@@ -371,7 +371,7 @@ void *read_what_other_proc_send(void *arg)
         // could copy this data.
         chrecv(MY_STDIN, &count, sizeof(count));
 
-        received_data = calloc(count, sizeof(uint8_t));
+        received_data = malloc(count);
         int read_bytes = 0;
         // Count might be greater than pipes buffor so we need to read from
         // buffor till read_bytes are equal to our count.
@@ -989,7 +989,7 @@ MIMPI_Retcode Barrier_root(MIMPI_Retcode ret_val_recv1,
     int right_son;
     init_sons_parent_my_rank_idx(&my_rank, &parent, &left_son, &right_son);
 
-    uint8_t message;
+    int message;
     // We are root, so if one of our sons returned error we send Cannot synch
     // barrier to our sons
     // printf("root ret val of son1: ");
