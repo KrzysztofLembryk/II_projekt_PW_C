@@ -989,7 +989,7 @@ MIMPI_Retcode Barrier_root(MIMPI_Retcode ret_val_recv1,
     int right_son;
     init_sons_parent_my_rank_idx(&my_rank, &parent, &left_son, &right_son);
 
-    int message;
+    uint8_t message;
     // We are root, so if one of our sons returned error we send Cannot synch
     // barrier to our sons
     // printf("root ret val of son1: ");
