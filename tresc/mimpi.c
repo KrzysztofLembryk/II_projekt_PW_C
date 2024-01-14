@@ -7,11 +7,33 @@
 #include "mimpi_common.h"
 // #include <semaphore.h>
 #include <pthread.h>
-// #include <time.h>
+#include <time.h>
 #include <sys/select.h>
 #include <stdatomic.h>
 
 #include <errno.h>
+
+int Msleep(long msec)
+{
+    struct timespec ts;
+    int res;
+
+    if (msec < 0)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    ts.tv_sec = msec / 1000;
+    ts.tv_nsec = (msec % 1000) * 1000000;
+
+    do
+    {
+        res = nanosleep(&ts, &ts);
+    } while (res && errno == EINTR);
+
+    return res;
+}
+
 
 typedef struct QElem
 {
@@ -306,7 +328,7 @@ void *read_what_other_proc_send(void *arg)
             
 
         // We init our fd_set with two dscrpt that we want to read from.
-        // LNIUX MAN:
+        // LINUX MAN:
         // Upon return, each of the file descriptor sets is
         // modified in place to indicate which file descriptors are
         // currently "ready".  Thus, if using select() within a loop, the
@@ -314,19 +336,33 @@ void *read_what_other_proc_send(void *arg)
         FD_ZERO(&dscrpt_set_src_and_parent);
         FD_SET(MY_STDIN, &dscrpt_set_src_and_parent);
         FD_SET(MY_STDIN_FROM_PARENT, &dscrpt_set_src_and_parent);
-        // printf("thread waiting on select\n");
+        // if(parent_rank == 0)
+        //     printf("proc %d, thread waiting on select\n", parent_rank);
         select(bigger_stdin + 1, &dscrpt_set_src_and_parent, NULL, NULL, NULL);
-
+        // if(parent_rank == 0)
+        //     printf("proc %d, thread after select\n", parent_rank);
         // Now we check which dscrpt is still in set, if not MY_STDIN it means
         // that someone wrote sth to MY_STDIN.
         if (FD_ISSET(MY_STDIN, &dscrpt_set_src_and_parent))
         {
+            // if(parent_rank == 0)
+            //     printf("proc %d, thread waiting to receive FROM SOURCE\n", parent_rank);
+            
+             if (atomic_load(&mimpi_handler.proc_left_MIMPI[parent_rank]))
+            {
+                if(parent_rank == 0)
+                    printf("proc %d, thread waiting to receive FROM SOURCE, but PARENT ALREADY IN FINALIZE!!!\n", parent_rank);
+                
+                break;
+            }
             // We get message from source proc.
             chrecv(MY_STDIN, &tag, sizeof(tag));
         }
         else
         {
-            // printf("thread received tag from parent proc\n");
+            if(parent_rank == 0)
+                printf("proc %d, thread waiting to receive FROM PARENT\n", parent_rank);
+            
             chrecv(MY_STDIN_FROM_PARENT, &tag, sizeof(tag));
         }
 
@@ -593,6 +629,10 @@ void close_all_left_dscrptrs()
 
 void MIMPI_Finalize()
 {
+    int rank = MIMPI_World_rank();
+    // if(rank == 1)
+    //     Msleep(100);
+    printf("proc %d in finalize\n", MIMPI_World_rank());
     ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
 
     atomic_store(&mimpi_handler.proc_left_MIMPI[MIMPI_World_rank()], true);
@@ -602,35 +642,39 @@ void MIMPI_Finalize()
     //int rank = MIMPI_World_rank();
 
     // if(rank == 4)
-    //     printf("proc : %d, sending finalize to proc\n", rank);
+         printf("proc : %d, sending finalize to proc\n", rank);
 
     send_finalize_to_all_other_proc();
 
     // if(rank == 4)
-    //     printf("proc : %d, sending finalize to threads\n", rank);
+         printf("proc : %d, sending finalize to threads\n", rank);
 
     send_finalize_to_all_threads();
     
     // if(rank == 4)
-    //     printf("proc : %d, joining threads\n", rank);
+         printf("proc : %d, joining threads\n", rank);
     for (int i = 0; i < mimpi_handler.nbr_of_proc; i++)
     {
         if (i != MIMPI_World_rank())
+        {
             ASSERT_ZERO(pthread_join(mimpi_handler.reading_threads[i], NULL));
+            printf("proc %d, thread joined\n", rank);
+        }
+            
     }
 
     // if(rank == 4)
-    //     printf("proc : %d, threads joined, closing rest of dscrptrs\n", rank);
+         printf("proc : %d, threads joined, closing rest of dscrptrs\n", rank);
 
     close_all_left_dscrptrs();
 
     // if(rank == 4)
-    //     printf("proc : %d, destructing handler\n", rank);
+         printf("proc : %d, destructing handler\n", rank);
 
     handler_destruct(&mimpi_handler);
 
     // if(rank == 4)
-    //     printf("proc : %d, channels finalize\n", rank);
+         printf("proc : %d, channels finalize\n", rank);
 
     channels_finalize();
 }
@@ -830,7 +874,7 @@ void print_Ret_code(MIMPI_Retcode code)
         printf("MIMPI_ERROR_REMOTE_FINISHED");
 }
 
-void print_tag(int tag)
+void print_msg(int tag)
 {
     if (tag == MAKE_MIMPI_BARRIER)
         printf("MAKE_MIMPI_BARRIER");
@@ -961,7 +1005,7 @@ MIMPI_Retcode Barrier_not_root(MIMPI_Retcode ret_val_recv1,
     // if(my_rank == 4)
     // {
     //printf("proc : %d SECOND STAGE, after recv message: ", my_rank);
-    //print_tag(*tag1); printf("\n");
+    //print_msg(*tag1); printf("\n");
     // }
         
     // printf("\n");
@@ -998,10 +1042,10 @@ MIMPI_Retcode Barrier_root(MIMPI_Retcode ret_val_recv1,
     // print_Ret_code(ret_val_recv2);
     // printf("\n");
     // printf("tag msg from left son: ");
-    // print_tag(*tag1);
+    // print_msg(*tag1);
     // printf("\n");
     // printf("tag msg from right son: ");
-    // print_tag(*tag2);
+    // print_msg(*tag2);
     // printf("\n");
     if ((ret_val_recv1 != MIMPI_SUCCESS || ret_val_recv2 != MIMPI_SUCCESS) ||
         (*tag1 == CANNOT_SYNCH_BARRIER || *tag2 == CANNOT_SYNCH_BARRIER))
@@ -1052,7 +1096,7 @@ MIMPI_Retcode MIMPI_Barrier()
     if (left_son < MIMPI_World_size())
         ret_val_recv1 = MIMPI_Recv(tag1, sizeof(*tag1), left_son, FIRST_STAGE_TAG);
     //printf("proc : %d msg from left son: ", my_rank);
-    //print_tag(*tag1);
+    //print_msg(*tag1);
     //printf("\n");
     
     if (right_son < MIMPI_World_size())
@@ -1062,7 +1106,7 @@ MIMPI_Retcode MIMPI_Barrier()
     // {
         
         // printf("proc : %d msg from right son: ", my_rank);
-        // print_tag(*tag2);
+        // print_msg(*tag2);
         // printf("\n");
         // printf("proc : %d retval 1: ", my_rank);
         // print_Ret_code(ret_val_recv1);
