@@ -62,6 +62,12 @@ void print_msg(int tag)
         printf("CANNOT_BCAST\n");
     if (tag == MAKE_BCAST)
         printf("MAKE_BCAST\n");
+    if(tag == MAKE_REDUCE)
+        printf("MAKE_REDUCE\n");
+    if(tag == CANNOT_REDUCE)
+        printf("CANNOT_REDUCE\n");
+    if(tag == NO_MSG_REDUCE)
+        printf("NO_MSG_REDUCE\n");
 }
 
 typedef struct QElem
@@ -1393,11 +1399,10 @@ MIMPI_Retcode MIMPI_Bcast(
     return not_root_BCAST(data, count, root);
 }
 
-void perform_given_operation(void *res_data, const void *my_data, 
+void perform_given_operation(void *res_data, 
     void *son_data, int count, MIMPI_Op op)
 {
     // We need to cast our data to easily operate on it.
-    const uint8_t *me = (uint8_t *)my_data;
     uint8_t *son = (uint8_t *)son_data;
     uint8_t *res = (uint8_t *)res_data;
 
@@ -1405,25 +1410,21 @@ void perform_given_operation(void *res_data, const void *my_data,
     {
         if (op == MIMPI_MAX)
         {
-            if (me[i] < son[i])
+            if (res[i] < son[i])
                 res[i] = son[i];
-            else
-                res[i] = me[i];
         }
         else if (op == MIMPI_MIN)
         {
-            if (me[i] > son[i])
+            if (res[i] > son[i])
                 res[i] = son[i];
-            else
-                res[i] = me[i];
         }
         else if (op == MIMPI_SUM)
         {
-            res[i] = me[i] + son[i];
+            res[i] += son[i];
         }
         else if (op == MIMPI_PROD)
         {
-            res[i] = me[i] * son[i];
+            res[i] *= son[i];
         }
         else
         {
@@ -1453,6 +1454,15 @@ void send_msgs_to_sons(uint8_t message, int left_son, int right_son,
         MIMPI_Send(&message, sizeof(message), right_son, FIRST_STAGE_TAG);
 }
 
+void print_data(void *data, int count)
+{
+    for(int i = 0; i < count; i++)
+    {
+        printf("%i ", (*(uint8_t*)(data + i)));
+    }
+    printf("\n");
+}
+
 MIMPI_Retcode real_root_REDUCE(void const *send_data,
                                void *recv_data,
                                int count,
@@ -1479,6 +1489,14 @@ MIMPI_Retcode real_root_REDUCE(void const *send_data,
     // received data[0] has message from our sons to us
     receive_data_from_sons(left_son, right_son, l_son_data, r_son_data,
                            count + 1, &retcode_l_son, &retcode_r_son);
+    // printf("ROOT left_son%d data: \n", left_son);
+
+    // print_data(l_son_data + 1, count);
+
+    // printf("ROOT right_son%d data: \n", right_son);
+
+    // print_data(r_son_data + 1, count);
+        
 
     if (retcode_l_son == MIMPI_SUCCESS &&
         retcode_r_son == MIMPI_SUCCESS &&
@@ -1488,12 +1506,15 @@ MIMPI_Retcode real_root_REDUCE(void const *send_data,
         // We need temp void* to store results of operations since, 
         // send data is CONST.
         void *res_data = malloc(count);
+        memcpy(res_data, send_data, count);
 
         if (left_son < MIMPI_World_size())
-            perform_given_operation(res_data, send_data, l_son_data + 1, count, op);
+            perform_given_operation(res_data, l_son_data + 1, count, op);
         if (right_son < MIMPI_World_size())
-            perform_given_operation(res_data, send_data, r_son_data + 1, count, op);
+            perform_given_operation(res_data, r_son_data + 1, count, op);
 
+        // printf("ROOT RESULT DATA: ");
+        // print_data(res_data, count);
         // If we are given root (root = 0) we simply copy data
         // to recv data and signalize sons about success
         if (root == MIMPI_World_rank())
@@ -1574,7 +1595,7 @@ MIMPI_Retcode other_proc_REDUCE(void const *send_data,
     // We need to initialize data[0] with sth to easily check if we got msg.
     *(uint8_t *)l_son_data = NO_MSG_REDUCE;
     *(uint8_t *)r_son_data = NO_MSG_REDUCE;
-
+    //printf("proc %d starts REDUCE : receiving data from sons\n", my_rank);
     receive_data_from_sons(left_son, right_son, l_son_data, r_son_data,
                            count + 1, &retcode_l_son, &retcode_r_son);
 
@@ -1586,10 +1607,11 @@ MIMPI_Retcode other_proc_REDUCE(void const *send_data,
         *(uint8_t *)r_son_data != CANNOT_REDUCE)
     {
         void *res_data = malloc(count);
+        memcpy(res_data, send_data, count);
         if (left_son < MIMPI_World_size())
-            perform_given_operation(res_data, send_data, l_son_data + 1, count, op);
+            perform_given_operation(res_data, l_son_data + 1, count, op);
         if (right_son < MIMPI_World_size())
-            perform_given_operation(res_data, send_data, r_son_data + 1, count, op);
+            perform_given_operation(res_data, r_son_data + 1, count, op);
 
         MIMPI_Retcode ret = inform_parent_about_REDUCE(MAKE_REDUCE, res_data, count, parent);
 
