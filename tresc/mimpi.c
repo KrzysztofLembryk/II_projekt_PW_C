@@ -56,12 +56,18 @@ void print_msg(int tag)
         printf("PARENT_PROC_IN_FINALIZE");
     if (tag == SRC_PROC_IN_FINALIZE)
         printf("SRC_PROC_IN_FINALIZE");
-    if(tag == SUCCESSFUL_BCAST)
+    if (tag == SUCCESSFUL_BCAST)
         printf("SUCCESSFUL_BCAST\n");
-    if(tag == CANNOT_BCAST)
+    if (tag == CANNOT_BCAST)
         printf("CANNOT_BCAST\n");
-    if(tag == MAKE_BCAST)
+    if (tag == MAKE_BCAST)
         printf("MAKE_BCAST\n");
+    if(tag == MAKE_REDUCE)
+        printf("MAKE_REDUCE\n");
+    if(tag == CANNOT_REDUCE)
+        printf("CANNOT_REDUCE\n");
+    if(tag == NO_MSG_REDUCE)
+        printf("NO_MSG_REDUCE\n");
 }
 
 typedef struct QElem
@@ -750,6 +756,8 @@ MIMPI_Retcode MIMPI_Send(
     if (destination >= MIMPI_World_size() || destination < 0)
         return MIMPI_ERROR_NO_SUCH_RANK;
 
+    if (atomic_load(&mimpi_handler.proc_left_MIMPI[destination]))
+        return MIMPI_ERROR_REMOTE_FINISHED;
     // We want array of bytes, so we need to cast void ptr to unint8_t.
 
     // We create buffer in which we store all data we want in specific order so
@@ -1088,6 +1096,8 @@ MIMPI_Retcode MIMPI_Barrier()
     int right_son;
     init_sons_parent_my_rank_idx(&my_rank, &parent, &left_son, &right_son);
 
+    // Allocating memory for tags is stupid but dont want to change it since it
+    // works just fine.
     uint8_t *tag1 = (uint8_t *)malloc(sizeof(uint8_t));
     uint8_t *tag2 = (uint8_t *)malloc(sizeof(uint8_t));
     *tag1 = DEFAULT_TAG;
@@ -1171,7 +1181,7 @@ MIMPI_Retcode root_BCAST(void *data,
     else
         message = CANNOT_BCAST;
 
-    //printf("ROOT sending msg to sons "); print_msg(message); printf("\n");
+    // printf("ROOT sending msg to sons "); print_msg(message); printf("\n");
     if (left_son < MIMPI_World_size())
         l_son_retcode = MIMPI_Send(&message, sizeof(message), left_son, FIRST_STAGE_TAG);
 
@@ -1212,23 +1222,23 @@ MIMPI_Retcode root_BCAST(void *data,
     else
     {
         // We got info from sons that we can BCAST so we send DATA
-        //printf("ROOOT sending DATA = %hhu to sons\n", *(uint8_t*)data);
+        // printf("ROOOT sending DATA = %hhu to sons\n", *(uint8_t*)data);
         if (left_son < MIMPI_World_size())
             l_son_retcode = MIMPI_Send(data, count, left_son, FIRST_STAGE_TAG);
-        //printf("ROOT sent DATA to L_son %d, retcode = ", left_son);
-        //print_Ret_code(l_son_retcode);
+        // printf("ROOT sent DATA to L_son %d, retcode = ", left_son);
+        // print_Ret_code(l_son_retcode);
         if (right_son < MIMPI_World_size())
             r_son_retcode = MIMPI_Send(data, count, right_son, FIRST_STAGE_TAG);
-        
-        //printf("ROOT sent DATA to R_son %d, retcode = ", right_son);
-        //print_Ret_code(l_son_retcode);
+
+        // printf("ROOT sent DATA to R_son %d, retcode = ", right_son);
+        // print_Ret_code(l_son_retcode);
     }
     return MIMPI_SUCCESS;
 }
 
 void cannot_Bcast_handler_not_root(MIMPI_Retcode parent_retcode,
-                                            MIMPI_Retcode l_son_retcode, MIMPI_Retcode r_son_retcode,
-                                            uint8_t l_son_message, uint8_t r_son_message)
+                                   MIMPI_Retcode l_son_retcode, MIMPI_Retcode r_son_retcode,
+                                   uint8_t l_son_message, uint8_t r_son_message)
 {
     int my_rank;
     int parent;
@@ -1272,12 +1282,12 @@ MIMPI_Retcode not_root_BCAST(void *data,
     r_son_retcode = MIMPI_SUCCESS;
     uint8_t message_from_parent = CANNOT_BCAST;
 
-    //printf("proc: %d in not_root_BCAST, receiving msg from parent: %d\n", my_rank, parent);
+    // printf("proc: %d in not_root_BCAST, receiving msg from parent: %d\n", my_rank, parent);
 
     MIMPI_Retcode parent_ret_code = MIMPI_Recv(&message_from_parent,
                                                sizeof(message_from_parent), parent, FIRST_STAGE_TAG);
 
-    //printf("proc %d received MSG from parent %d: ", my_rank, parent); print_msg(message_from_parent);
+    // printf("proc %d received MSG from parent %d: ", my_rank, parent); print_msg(message_from_parent);
     if (left_son < MIMPI_World_size())
         l_son_retcode = MIMPI_Send(&message_from_parent, sizeof(message_from_parent), left_son, FIRST_STAGE_TAG);
 
@@ -1286,7 +1296,7 @@ MIMPI_Retcode not_root_BCAST(void *data,
 
     uint8_t l_son_message = MAKE_BCAST;
     uint8_t r_son_message = MAKE_BCAST;
-    //printf("proc %d waiting for sons msgs\n", my_rank);
+    // printf("proc %d waiting for sons msgs\n", my_rank);
     if (left_son < MIMPI_World_size())
         l_son_retcode = MIMPI_Recv(&l_son_message,
                                    sizeof(l_son_message), left_son, FIRST_STAGE_TAG);
@@ -1302,20 +1312,20 @@ MIMPI_Retcode not_root_BCAST(void *data,
 
     if (message_from_parent == CANNOT_BCAST)
     {
-        //printf("proc %d got CANNOT_BCAST from parent %d\n", my_rank, parent);
+        // printf("proc %d got CANNOT_BCAST from parent %d\n", my_rank, parent);
         cannot_Bcast_handler_not_root(parent_ret_code, l_son_retcode, r_son_retcode, l_son_message, r_son_message);
 
         return MIMPI_ERROR_REMOTE_FINISHED;
     }
     else // message_from_parent == MAKE_BCAST
     {
-        //printf("proc %d got MAKE_BCAST from parent %d\n", my_rank, parent);
+        // printf("proc %d got MAKE_BCAST from parent %d\n", my_rank, parent);
         if ((r_son_retcode != MIMPI_SUCCESS ||
              l_son_retcode != MIMPI_SUCCESS) ||
             (l_son_message == CANNOT_BCAST ||
              r_son_message == CANNOT_BCAST))
         {
-           // printf("proc %d got some error from sons\n", my_rank);
+            // printf("proc %d got some error from sons\n", my_rank);
             cannot_Bcast_handler_not_root(parent_ret_code, l_son_retcode, r_son_retcode, l_son_message, r_son_message);
 
             // After sending messages we end with error.
@@ -1325,12 +1335,12 @@ MIMPI_Retcode not_root_BCAST(void *data,
         {
             // Everything was succesful so we send SUCCESSFUL_BCAST to our
             // parent and wait for data from him
-            //printf("proc %d SUCCES, we send to our parent %d : MAKE_BCAST\n", my_rank, parent);
+            // printf("proc %d SUCCES, we send to our parent %d : MAKE_BCAST\n", my_rank, parent);
             uint8_t message = MAKE_BCAST;
             MIMPI_Send(&message, sizeof(message), parent, FIRST_STAGE_TAG);
             MIMPI_Recv(data, count, parent, FIRST_STAGE_TAG);
 
-            //printf("proc : %d received final data = %hhu ,from parent : %d\n", my_rank, *(uint8_t*)data, parent);
+            // printf("proc : %d received final data = %hhu ,from parent : %d\n", my_rank, *(uint8_t*)data, parent);
 
             if (left_son < MIMPI_World_size())
                 MIMPI_Send(data, count, left_son, FIRST_STAGE_TAG);
@@ -1361,10 +1371,10 @@ MIMPI_Retcode MIMPI_Bcast(
     // Root is us
     if (root == MIMPI_World_rank())
     {
-        //printf("proc %d is root\n", my_rank);
-        // If we are real root of the tree, meaning == 0, we send info that we
-        // want to Bcast, wait for sons response and if we can we send DATA,
-        // if we cant we send error to our sons.
+        // printf("proc %d is root\n", my_rank);
+        //  If we are real root of the tree, meaning == 0, we send info that we
+        //  want to Bcast, wait for sons response and if we can we send DATA,
+        //  if we cant we send error to our sons.
         if (root == 0)
         {
             return root_BCAST(data, count, root, MIMPI_SUCCESS);
@@ -1373,7 +1383,7 @@ MIMPI_Retcode MIMPI_Bcast(
         // normal processes do.
         else
         {
-            //printf("rootproc %d, sends data to real root\n", my_rank);
+            // printf("rootproc %d, sends data to real root\n", my_rank);
             MIMPI_Send(data, count, 0, FIRST_STAGE_TAG);
         }
     }
@@ -1382,11 +1392,284 @@ MIMPI_Retcode MIMPI_Bcast(
         // We are real root, but not root given by function, so we need to wait
         // for data from given root.
         MIMPI_Retcode ret_code = MIMPI_Recv(data, count, root, FIRST_STAGE_TAG);
-        //printf("REAL ROOT received data %d\n", *(uint8_t*)data);
+        // printf("REAL ROOT received data %d\n", *(uint8_t*)data);
         return root_BCAST(data, count, root, ret_code);
     }
 
-   return not_root_BCAST(data, count, root);
+    return not_root_BCAST(data, count, root);
+}
+
+void perform_given_operation(void *res_data, 
+    void *son_data, int count, MIMPI_Op op)
+{
+    // We need to cast our data to easily operate on it.
+    uint8_t *son = (uint8_t *)son_data;
+    uint8_t *res = (uint8_t *)res_data;
+
+    for (int i = 0; i < count; i++)
+    {
+        if (op == MIMPI_MAX)
+        {
+            if (res[i] < son[i])
+                res[i] = son[i];
+        }
+        else if (op == MIMPI_MIN)
+        {
+            if (res[i] > son[i])
+                res[i] = son[i];
+        }
+        else if (op == MIMPI_SUM)
+        {
+            res[i] += son[i];
+        }
+        else if (op == MIMPI_PROD)
+        {
+            res[i] *= son[i];
+        }
+        else
+        {
+            printf("NO SUCH OPERATION EXISTS\n");
+        }
+    }
+}
+
+void receive_data_from_sons(int left_son, int right_son, void *l_son_data,
+                            void *r_son_data, int count, MIMPI_Retcode *retcode_l_son,
+                            MIMPI_Retcode *retcode_r_son)
+{
+    if (left_son < MIMPI_World_size())
+        *retcode_l_son = MIMPI_Recv(l_son_data, count, left_son, FIRST_STAGE_TAG);
+
+    if (right_son < MIMPI_World_size())
+        *retcode_r_son = MIMPI_Recv(r_son_data, count, right_son, FIRST_STAGE_TAG);
+}
+
+void send_msgs_to_sons(uint8_t message, int left_son, int right_son,
+                       uint8_t l_son_info, uint8_t r_son_info)
+{
+    if (left_son < MIMPI_World_size() && l_son_info != NO_MSG_REDUCE)
+        MIMPI_Send(&message, sizeof(message), left_son, FIRST_STAGE_TAG);
+
+    if (right_son < MIMPI_World_size() && r_son_info != NO_MSG_REDUCE)
+        MIMPI_Send(&message, sizeof(message), right_son, FIRST_STAGE_TAG);
+}
+
+void print_data(void *data, int count)
+{
+    for(int i = 0; i < count; i++)
+    {
+        printf("%i ", (*(uint8_t*)(data + i)));
+    }
+    printf("\n");
+}
+
+MIMPI_Retcode real_root_REDUCE(void const *send_data,
+                               void *recv_data,
+                               int count,
+                               MIMPI_Op op,
+                               int root)
+{
+    int my_rank;
+    int parent;
+    int left_son;
+    int right_son;
+    init_sons_parent_my_rank_idx(&my_rank, &parent, &left_son, &right_son);
+
+    MIMPI_Retcode whole_func_retcode = MIMPI_SUCCESS;
+    MIMPI_Retcode retcode_l_son = MIMPI_SUCCESS;
+    MIMPI_Retcode retcode_r_son = MIMPI_SUCCESS;
+
+    void *l_son_data = malloc(count + 1);
+    void *r_son_data = malloc(count + 1);
+    // We need to initialize data[0] with sth to easily check if we got msg.
+    *(uint8_t *)l_son_data = NO_MSG_REDUCE;
+    *(uint8_t *)r_son_data = NO_MSG_REDUCE;
+
+    // We are root, we wait for data from our sons to perform operation on
+    // received data[0] has message from our sons to us
+    receive_data_from_sons(left_son, right_son, l_son_data, r_son_data,
+                           count + 1, &retcode_l_son, &retcode_r_son);
+    // printf("ROOT left_son%d data: \n", left_son);
+
+    // print_data(l_son_data + 1, count);
+
+    // printf("ROOT right_son%d data: \n", right_son);
+
+    // print_data(r_son_data + 1, count);
+        
+
+    if (retcode_l_son == MIMPI_SUCCESS &&
+        retcode_r_son == MIMPI_SUCCESS &&
+        *(uint8_t *)l_son_data != CANNOT_REDUCE &&
+        *(uint8_t *)r_son_data != CANNOT_REDUCE)
+    {
+        // We need temp void* to store results of operations since, 
+        // send data is CONST.
+        void *res_data = malloc(count);
+        memcpy(res_data, send_data, count);
+
+        if (left_son < MIMPI_World_size())
+            perform_given_operation(res_data, l_son_data + 1, count, op);
+        if (right_son < MIMPI_World_size())
+            perform_given_operation(res_data, r_son_data + 1, count, op);
+
+        // printf("ROOT RESULT DATA: ");
+        // print_data(res_data, count);
+        // If we are given root (root = 0) we simply copy data
+        // to recv data and signalize sons about success
+        if (root == MIMPI_World_rank())
+        {
+            memcpy(recv_data, res_data, count);
+        }
+        // If 0 is not a root in argument we send data to given root
+        // without any tags, cause info whether REDUCE successful root
+        // will get from his parent.
+        else
+        {
+            MIMPI_Send(res_data, count, root, FIRST_STAGE_TAG);
+        }
+
+        free(res_data);
+        // Sending msgs to sons that REDUCE successful.
+        send_msgs_to_sons(MAKE_REDUCE, left_son, right_son,
+                          *(uint8_t *)l_son_data, *(uint8_t *)r_son_data);
+
+        whole_func_retcode = MIMPI_SUCCESS;
+    }
+    else
+    {
+        // Either on of our sons left MIMPI or in one of subtrs sb left.
+        // Firstly we need to send data to given root, data needs to be of
+        // size count, doesnt matter what we send, but we must do it since
+        // root process will wait for this data.
+        MIMPI_Send(send_data, count, root, FIRST_STAGE_TAG);
+
+        // We send msg about error to our sons but only if their retcodes
+        // were MIMPI_SUCCESS otherwise it means they left MIMPI so we dont
+        // need to send them any message.
+        send_msgs_to_sons(CANNOT_REDUCE, left_son, right_son,
+                          *(uint8_t *)l_son_data, *(uint8_t *)r_son_data);
+
+        whole_func_retcode = MIMPI_ERROR_REMOTE_FINISHED;
+    }
+
+    free(l_son_data);
+    free(r_son_data);
+
+    return whole_func_retcode;
+}
+
+MIMPI_Retcode inform_parent_about_REDUCE(uint8_t message, const void *send_data, 
+int count, int parent)
+{
+    void *data_for_parent = malloc(count + 1);
+    *(uint8_t *)data_for_parent = message;
+
+    memcpy(data_for_parent + 1, send_data, count);
+
+    MIMPI_Retcode ret = MIMPI_Send(data_for_parent, count + 1, parent, FIRST_STAGE_TAG);
+
+    free(data_for_parent);
+
+    return ret;
+}
+
+MIMPI_Retcode other_proc_REDUCE(void const *send_data,
+                                void *recv_data,
+                                int count,
+                                MIMPI_Op op,
+                                int root)
+{
+    int my_rank;
+    int parent;
+    int left_son;
+    int right_son;
+    init_sons_parent_my_rank_idx(&my_rank, &parent, &left_son, &right_son);
+
+    MIMPI_Retcode whole_func_retcode = MIMPI_SUCCESS;
+    MIMPI_Retcode retcode_l_son = MIMPI_SUCCESS;
+    MIMPI_Retcode retcode_r_son = MIMPI_SUCCESS;
+
+    void *l_son_data = malloc(count + 1);
+    void *r_son_data = malloc(count + 1);
+    // We need to initialize data[0] with sth to easily check if we got msg.
+    *(uint8_t *)l_son_data = NO_MSG_REDUCE;
+    *(uint8_t *)r_son_data = NO_MSG_REDUCE;
+    //printf("proc %d starts REDUCE : receiving data from sons\n", my_rank);
+    receive_data_from_sons(left_son, right_son, l_son_data, r_son_data,
+                           count + 1, &retcode_l_son, &retcode_r_son);
+
+    // If receiving from sons was successful we perform operations and send
+    // new data to our parent with information tag.
+    if (retcode_l_son == MIMPI_SUCCESS &&
+        retcode_r_son == MIMPI_SUCCESS &&
+        *(uint8_t *)l_son_data != CANNOT_REDUCE &&
+        *(uint8_t *)r_son_data != CANNOT_REDUCE)
+    {
+        void *res_data = malloc(count);
+        memcpy(res_data, send_data, count);
+        if (left_son < MIMPI_World_size())
+            perform_given_operation(res_data, l_son_data + 1, count, op);
+        if (right_son < MIMPI_World_size())
+            perform_given_operation(res_data, r_son_data + 1, count, op);
+
+        MIMPI_Retcode ret = inform_parent_about_REDUCE(MAKE_REDUCE, res_data, count, parent);
+
+        free(res_data);
+        // Its possible that our parent is not in MIMPI so we need to send
+        // error message to our sons
+        if (ret != MIMPI_SUCCESS)
+        {
+            send_msgs_to_sons(CANNOT_REDUCE, left_son, right_son,
+                              *(uint8_t *)l_son_data, *(uint8_t *)r_son_data);
+
+            whole_func_retcode = MIMPI_ERROR_REMOTE_FINISHED;
+        }
+        else
+        {
+            // If we are root, we wait to receive data from root=0, and we
+            // save it in recv_data.
+            if (MIMPI_World_rank() == root)
+                MIMPI_Recv(recv_data, count, 0, FIRST_STAGE_TAG);
+
+            // We forward message from our parent to our sons.
+            uint8_t message;
+            MIMPI_Recv(&message, sizeof(message), parent, FIRST_STAGE_TAG);
+
+            send_msgs_to_sons(message, left_son, right_son,
+                              *(uint8_t *)l_son_data, *(uint8_t *)r_son_data);
+
+            if (message == CANNOT_REDUCE)
+                whole_func_retcode = MIMPI_ERROR_REMOTE_FINISHED;
+            else
+                whole_func_retcode = MIMPI_SUCCESS;
+        }
+    }
+    else
+    {
+        whole_func_retcode = MIMPI_ERROR_REMOTE_FINISHED;
+        // Receiving data from sons was not successful, so we inform parent.
+        MIMPI_Retcode ret = inform_parent_about_REDUCE(CANNOT_REDUCE, send_data, count, parent);
+
+        if (ret != MIMPI_SUCCESS)
+        {
+            send_msgs_to_sons(CANNOT_REDUCE, left_son, right_son,
+                              *(uint8_t *)l_son_data, *(uint8_t *)r_son_data);
+        }
+        else
+        {
+            uint8_t message;
+            MIMPI_Recv(&message, sizeof(message), parent, FIRST_STAGE_TAG);
+
+            send_msgs_to_sons(message, left_son, right_son,
+                              *(uint8_t *)l_son_data, *(uint8_t *)r_son_data);
+        }
+    }
+
+    free(l_son_data);
+    free(r_son_data);
+
+    return whole_func_retcode;
 }
 
 MIMPI_Retcode MIMPI_Reduce(
@@ -1396,6 +1679,19 @@ MIMPI_Retcode MIMPI_Reduce(
     MIMPI_Op op,
     int root)
 {
-    // TODO
+    if (root >= MIMPI_World_size() || root < 0)
+        return MIMPI_ERROR_NO_SUCH_RANK;
+
+    int my_rank = MIMPI_World_rank();
+
+    if (my_rank == 0)
+    {
+        return real_root_REDUCE(send_data, recv_data, count, op, root);
+    }
+    else
+    {
+        return other_proc_REDUCE(send_data, recv_data, count, op, root);
+    }
+
     return MIMPI_SUCCESS;
 }

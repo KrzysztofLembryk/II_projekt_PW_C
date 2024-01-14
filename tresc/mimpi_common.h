@@ -83,4 +83,8 @@ _Noreturn extern void fatal(const char* fmt, ...);
 #define CANNOT_BCAST 9
 #define MAKE_BCAST 10
 
+#define MAKE_REDUCE 11
+#define CANNOT_REDUCE 12
+#define NO_MSG_REDUCE 13
+
 #endif // MIMPI_COMMON_H
