@@ -1143,7 +1143,8 @@ MIMPI_Retcode MIMPI_Barrier()
 
 MIMPI_Retcode root_BCAST(void *data,
                          int count,
-                         int root)
+                         int root,
+                         MIMPI_Retcode ret_code)
 {
     int my_rank;
     int parent;
@@ -1157,7 +1158,12 @@ MIMPI_Retcode root_BCAST(void *data,
     // First we send uint8_t message that we will start bcast, so that
     // we can check if it is possible before sending void *data, cause
     // sending it may be loong.
-    uint8_t message = MAKE_BCAST;
+    uint8_t message;
+    // We check if we as real root got data, if not we send cannot bcast.
+    if (ret_code == MIMPI_SUCCESS)
+        message = MAKE_BCAST;
+    else
+        message = CANNOT_BCAST;
 
     if (left_son < MIMPI_World_size())
         l_son_retcode = MIMPI_Send(&message, sizeof(message), left_son, FIRST_STAGE_TAG);
@@ -1209,9 +1215,9 @@ MIMPI_Retcode root_BCAST(void *data,
     return MIMPI_SUCCESS;
 }
 
-MIMPI_Retcode cannot_Bcast_handler_not_root(MIMPI_Retcode parent_retcode, 
-    MIMPI_Retcode l_son_retcode, MIMPI_Retcode r_son_retcode, 
-    uint8_t l_son_message, uint8_t r_son_message)
+MIMPI_Retcode cannot_Bcast_handler_not_root(MIMPI_Retcode parent_retcode,
+                                            MIMPI_Retcode l_son_retcode, MIMPI_Retcode r_son_retcode,
+                                            uint8_t l_son_message, uint8_t r_son_message)
 {
     int my_rank;
     int parent;
@@ -1219,7 +1225,7 @@ MIMPI_Retcode cannot_Bcast_handler_not_root(MIMPI_Retcode parent_retcode,
     int right_son;
 
     init_sons_parent_my_rank_idx(&my_rank, &parent, &left_son, &right_son);
-    
+
     uint8_t message = CANNOT_BCAST;
 
     if (left_son < MIMPI_World_size() &&
@@ -1243,6 +1249,74 @@ MIMPI_Retcode not_root_BCAST(void *data,
                              int count,
                              int root)
 {
+    // We are just a process who waits for data from parent and propagets it
+    int my_rank;
+    int parent;
+    int left_son;
+    int right_son;
+    init_sons_parent_my_rank_idx(&my_rank, &parent, &left_son, &right_son);
+
+    MIMPI_Retcode l_son_retcode, r_son_retcode;
+    l_son_retcode = MIMPI_SUCCESS;
+    r_son_retcode = MIMPI_SUCCESS;
+    uint8_t message_from_parent = CANNOT_BCAST;
+    
+    MIMPI_Retcode parent_ret_code = MIMPI_Recv(&message_from_parent,
+                                               sizeof(message_from_parent), parent, FIRST_STAGE_TAG);
+
+    if (left_son < MIMPI_World_size())
+        l_son_retcode = MIMPI_Send(&message_from_parent, sizeof(message_from_parent), left_son, FIRST_STAGE_TAG);
+
+    if (right_son < MIMPI_World_size())
+        r_son_retcode = MIMPI_Send(&message_from_parent, sizeof(message_from_parent), right_son, FIRST_STAGE_TAG);
+
+    uint8_t l_son_message = MAKE_BCAST;
+    uint8_t r_son_message = MAKE_BCAST;
+
+    if (left_son < MIMPI_World_size())
+        l_son_retcode = MIMPI_Recv(&l_son_message,
+                                   sizeof(l_son_message), left_son, FIRST_STAGE_TAG);
+
+    if (right_son < MIMPI_World_size())
+        r_son_retcode = MIMPI_Recv(&r_son_message,
+                                   sizeof(r_son_message), right_son, FIRST_STAGE_TAG);
+
+    if (message_from_parent == CANNOT_BCAST)
+    {
+        cannot_Bcast_handler_not_root(parent_ret_code, l_son_retcode, r_son_retcode, l_son_message, r_son_message);
+
+        return MIMPI_ERROR_REMOTE_FINISHED;
+    }
+    else // message_from_parent == MAKE_BCAST
+    {
+        if ((r_son_retcode != MIMPI_SUCCESS ||
+             l_son_retcode != MIMPI_SUCCESS) ||
+            (l_son_message == CANNOT_BCAST ||
+             r_son_message == CANNOT_BCAST))
+        {
+            cannot_Bcast_handler_not_root(parent_ret_code, l_son_retcode, r_son_retcode, l_son_message, r_son_message);
+
+            // After sending messages we end with error.
+            return MIMPI_ERROR_REMOTE_FINISHED;
+        }
+        else
+        {
+            // Everything was succesful so we send SUCCESSFUL_BCAST to our
+            // parent and wait for data from him
+            uint8_t message = MAKE_BCAST;
+            MIMPI_Send(&message, sizeof(message), parent, FIRST_STAGE_TAG);
+            MIMPI_Recv(data, count, parent, FIRST_STAGE_TAG);
+
+            if (left_son < MIMPI_World_size())
+                MIMPI_Send(data, count, left_son, FIRST_STAGE_TAG);
+
+            if (right_son < MIMPI_World_size())
+                MIMPI_Send(data, count, right_son, FIRST_STAGE_TAG);
+            // then we send this data to our sons and end
+        }
+    }
+
+    return MIMPI_SUCCESS;
 }
 
 MIMPI_Retcode MIMPI_Bcast(
@@ -1270,7 +1344,7 @@ MIMPI_Retcode MIMPI_Bcast(
         // if we cant we send error to our sons.
         if (root == 0)
         {
-            return root_BCAST(data, count, root);
+            return root_BCAST(data, count, root, MIMPI_SUCCESS);
         }
         // If we are not real root, we send data to real root and do what other
         // normal processes do.
@@ -1284,80 +1358,66 @@ MIMPI_Retcode MIMPI_Bcast(
         // We are real root, but not root given by function, so we need to wait
         // for data from given root.
         MIMPI_Retcode ret_code = MIMPI_Recv(data, count, root, FIRST_STAGE_TAG);
-        return root_BCAST(data, count, root);
+        return root_BCAST(data, count, root, ret_code);
     }
-    else
+
+    // We are just a process who waits for data from parent and propagets it
+    uint8_t message_from_parent = CANNOT_BCAST;
+    MIMPI_Retcode parent_ret_code = MIMPI_Recv(&message_from_parent,
+                                               sizeof(message_from_parent), parent, FIRST_STAGE_TAG);
+
+    if (left_son < MIMPI_World_size())
+        l_son_retcode = MIMPI_Send(&message_from_parent, sizeof(message_from_parent), left_son, FIRST_STAGE_TAG);
+
+    if (right_son < MIMPI_World_size())
+        r_son_retcode = MIMPI_Send(&message_from_parent, sizeof(message_from_parent), right_son, FIRST_STAGE_TAG);
+
+    uint8_t l_son_message = MAKE_BCAST;
+    uint8_t r_son_message = MAKE_BCAST;
+
+    if (left_son < MIMPI_World_size())
+        l_son_retcode = MIMPI_Recv(&l_son_message,
+                                   sizeof(l_son_message), left_son, FIRST_STAGE_TAG);
+
+    if (right_son < MIMPI_World_size())
+        r_son_retcode = MIMPI_Recv(&r_son_message,
+                                   sizeof(r_son_message), right_son, FIRST_STAGE_TAG);
+
+    if (message_from_parent == CANNOT_BCAST)
     {
-        // We are just a process who waits for data from parent and propagets it
-        uint8_t message_from_parent = CANNOT_BCAST;
-        MIMPI_Retcode parent_ret_code = MIMPI_Recv(&message_from_parent,
-                                                   sizeof(message_from_parent), parent, FIRST_STAGE_TAG);
+        cannot_Bcast_handler_not_root(parent_ret_code, l_son_retcode, r_son_retcode, l_son_message, r_son_message);
 
-        if (left_son < MIMPI_World_size())
-            l_son_retcode = MIMPI_Send(&message_from_parent, sizeof(message_from_parent), left_son, FIRST_STAGE_TAG);
-
-        if (right_son < MIMPI_World_size())
-            r_son_retcode = MIMPI_Send(&message_from_parent, sizeof(message_from_parent), right_son, FIRST_STAGE_TAG);
-
-        uint8_t l_son_message = MAKE_BCAST;
-        uint8_t r_son_message = MAKE_BCAST;
-
-        if (left_son < MIMPI_World_size())
-            l_son_retcode = MIMPI_Recv(&l_son_message,
-                                       sizeof(l_son_message), left_son, FIRST_STAGE_TAG);
-
-        if (right_son < MIMPI_World_size())
-            r_son_retcode = MIMPI_Recv(&r_son_message,
-                                       sizeof(r_son_message), right_son, FIRST_STAGE_TAG);
-
-        if (message_from_parent == CANNOT_BCAST)
+        return MIMPI_ERROR_REMOTE_FINISHED;
+    }
+    else // message_from_parent == MAKE_BCAST
+    {
+        if ((r_son_retcode != MIMPI_SUCCESS ||
+             l_son_retcode != MIMPI_SUCCESS) ||
+            (l_son_message == CANNOT_BCAST ||
+             r_son_message == CANNOT_BCAST))
         {
-            if (left_son < MIMPI_World_size() &&
-                l_son_message != CANNOT_BCAST &&
-                l_son_retcode == MIMPI_SUCCESS)
-            {
-                MIMPI_Send(&message_from_parent, sizeof(message_from_parent), left_son, FIRST_STAGE_TAG);
-            }
-            if (right_son < MIMPI_World_size() &&
-                r_son_message != CANNOT_BCAST &&
-                r_son_retcode == MIMPI_SUCCESS)
-            {
-                MIMPI_Send(&message_from_parent, sizeof(message_from_parent), right_son, FIRST_STAGE_TAG);
-            }
+            cannot_Bcast_handler_not_root(parent_ret_code, l_son_retcode, r_son_retcode, l_son_message, r_son_message);
 
-            if (parent_ret_code == MIMPI_SUCCESS)
-                MIMPI_Send(&message_from_parent, sizeof(message_from_parent), parent, FIRST_STAGE_TAG);
-
+            // After sending messages we end with error.
             return MIMPI_ERROR_REMOTE_FINISHED;
         }
-        else // message_from_parent == MAKE_BCAST
+        else
         {
-            if ((r_son_retcode != MIMPI_SUCCESS ||
-                 l_son_retcode != MIMPI_SUCCESS) ||
-                (l_son_message == CANNOT_BCAST ||
-                 r_son_message == CANNOT_BCAST))
-            {
-                uint8_t message = CANNOT_BCAST;
-                if (left_son < MIMPI_World_size() &&
-                    l_son_retcode == MIMPI_SUCCESS &&
-                    l_son_message != CANNOT_BCAST)
-                {
-                    MIMPI_Send(&message, sizeof(message), left_son, FIRST_STAGE_TAG);
-                }
-                if (right_son < MIMPI_World_size() &&
-                    r_son_retcode == MIMPI_SUCCESS &&
-                    r_son_message != CANNOT_BCAST)
-                {
-                    MIMPI_Send(&message, sizeof(message), right_son, FIRST_STAGE_TAG);
-                }
-                if (parent_ret_code == MIMPI_SUCCESS)
-                    MIMPI_Send(&message, sizeof(message_from_parent), parent, FIRST_STAGE_TAG);
+            // Everything was succesful so we send SUCCESSFUL_BCAST to our
+            // parent and wait for data from him
+            uint8_t message = MAKE_BCAST;
+            MIMPI_Send(&message, sizeof(message), parent, FIRST_STAGE_TAG);
+            MIMPI_Recv(data, count, parent, FIRST_STAGE_TAG);
 
-                // After sending messages we end with error.
-                return MIMPI_ERROR_REMOTE_FINISHED;
-            }
+            if (left_son < MIMPI_World_size())
+                MIMPI_Send(data, count, left_son, FIRST_STAGE_TAG);
+
+            if (right_son < MIMPI_World_size())
+                MIMPI_Send(data, count, right_son, FIRST_STAGE_TAG);
+            // then we send this data to our sons and end
         }
     }
+
     return MIMPI_SUCCESS;
 }
 
