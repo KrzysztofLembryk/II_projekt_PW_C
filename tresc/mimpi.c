@@ -34,6 +34,31 @@ int Msleep(long msec)
     return res;
 }
 
+void print_Ret_code(MIMPI_Retcode code)
+{
+    if (code == MIMPI_SUCCESS)
+        printf("MIMPI_SUCCESS");
+    if (code == MIMPI_ERROR_REMOTE_FINISHED)
+        printf("MIMPI_ERROR_REMOTE_FINISHED");
+}
+
+void print_msg(int tag)
+{
+    if (tag == MAKE_MIMPI_BARRIER)
+        printf("MAKE_MIMPI_BARRIER");
+    if (tag == RELEASE_MIMPI_BARRIER)
+        printf("RELEASE_MIMPI_BARRIER");
+    if (tag == CANNOT_SYNCH_BARRIER)
+        printf("CANNOT_SYNCH_BARRIER");
+    if (tag == DEFAULT_TAG)
+        printf("DEFAULT_TAG");
+    if(tag == PARENT_PROC_IN_FINALIZE)
+        printf("PARENT_PROC_IN_FINALIZE");
+    if(tag == SRC_PROC_IN_FINALIZE)
+        printf("SRC_PROC_IN_FINALIZE");
+}
+
+
 
 typedef struct QElem
 {
@@ -345,23 +370,29 @@ void *read_what_other_proc_send(void *arg)
         // that someone wrote sth to MY_STDIN.
         if (FD_ISSET(MY_STDIN, &dscrpt_set_src_and_parent))
         {
-            // if(parent_rank == 0)
-            //     printf("proc %d, thread waiting to receive FROM SOURCE\n", parent_rank);
+            // if(parent_rank == 4)
+            //     printf("proc %d, thread waiting to receive FROM SOURCE %d\n", parent_rank, source_rank);
             
              if (atomic_load(&mimpi_handler.proc_left_MIMPI[parent_rank]))
             {
-                if(parent_rank == 0)
-                    printf("proc %d, thread waiting to receive FROM SOURCE, but PARENT ALREADY IN FINALIZE!!!\n", parent_rank);
+                // if(parent_rank == 0)
+                //     printf("proc %d, thread waiting to receive FROM SOURCE, but PARENT ALREADY IN FINALIZE!!!\n", parent_rank);
                 
                 break;
             }
             // We get message from source proc.
             chrecv(MY_STDIN, &tag, sizeof(tag));
+
+            if(parent_rank == 4)
+            {
+                printf("proc %d, thread received FROM SOURCE %d, message : ", parent_rank, source_rank); print_msg(tag); printf("\n");
+            }
+                
         }
         else
         {
-            if(parent_rank == 0)
-                printf("proc %d, thread waiting to receive FROM PARENT\n", parent_rank);
+            // if(parent_rank == 0)
+            //     printf("proc %d, thread waiting to receive FROM PARENT\n", parent_rank);
             
             chrecv(MY_STDIN_FROM_PARENT, &tag, sizeof(tag));
         }
@@ -533,11 +564,11 @@ void send_finalize_to_all_threads()
     // write dscrpt we need to add 1.
     // !!!!! POSSIBLE THAT IN MIMPI PROC_LEFT_MIMPI
 
-    // if(my_rank == 4)
-    // {
-    //     for(int i = 0; i < nbr_proc; i++)
-    //         printf("thread %d left: %d\n", i, atomic_load(&mimpi_handler.proc_left_MIMPI[i]));
-    // }
+    if(my_rank == 4)
+    {
+        for(int i = 0; i < nbr_proc; i++)
+            printf("thread %d left: %d\n", i, atomic_load(&mimpi_handler.proc_left_MIMPI[i]));
+    }
 
     int tag = PARENT_PROC_IN_FINALIZE;
     for (int i = 0; i < nbr_proc; i++)
@@ -560,11 +591,11 @@ void send_finalize_to_all_other_proc()
     int MY_STARTING_DSCRPT = OFFSET + my_rank * 2 * nbr_proc;
     int MY_STDOUT;
     int tag = SRC_PROC_IN_FINALIZE;
-    // if(my_rank == 4)
-    // {
-    //     for(int i = 0; i < nbr_proc; i++)
-    //         printf("proc %d left: %d\n", i, atomic_load(&mimpi_handler.proc_left_MIMPI[i]));
-    // }
+    if(my_rank == 4 || my_rank == 1)
+    {
+        for(int i = 0; i < nbr_proc; i++)
+            printf("I am proc %d, proc %d left: %d\n", my_rank, i, atomic_load(&mimpi_handler.proc_left_MIMPI[i]));
+    }
 
     for (int proc_rank = 0; proc_rank < nbr_proc; proc_rank++)
     {
@@ -572,8 +603,8 @@ void send_finalize_to_all_other_proc()
         {
             if(!atomic_load(&mimpi_handler.proc_left_MIMPI[proc_rank]))
             {
-                // if(my_rank == 4)
-                //     printf("proc : %d sending finalize to proc %d\n", my_rank, proc_rank);
+                if(my_rank == 4 || my_rank == 1)
+                    printf("proc : %d sending finalize to proc %d\n", my_rank, proc_rank);
                 MY_STDOUT = MY_STARTING_DSCRPT + 2 * proc_rank + 1;
                 chsend(MY_STDOUT, &tag, sizeof(tag));
             }
@@ -629,10 +660,10 @@ void close_all_left_dscrptrs()
 
 void MIMPI_Finalize()
 {
-    int rank = MIMPI_World_rank();
+    // int rank = MIMPI_World_rank();
     // if(rank == 1)
     //     Msleep(100);
-    printf("proc %d in finalize\n", MIMPI_World_rank());
+    //printf("proc %d in finalize\n", MIMPI_World_rank());
     ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
 
     atomic_store(&mimpi_handler.proc_left_MIMPI[MIMPI_World_rank()], true);
@@ -642,39 +673,41 @@ void MIMPI_Finalize()
     //int rank = MIMPI_World_rank();
 
     // if(rank == 4)
-         printf("proc : %d, sending finalize to proc\n", rank);
+    //     printf("proc : %d, sending finalize to proc\n", rank);
 
     send_finalize_to_all_other_proc();
 
     // if(rank == 4)
-         printf("proc : %d, sending finalize to threads\n", rank);
+    //     printf("proc : %d, sending finalize to threads\n", rank);
 
     send_finalize_to_all_threads();
+
+    
     
     // if(rank == 4)
-         printf("proc : %d, joining threads\n", rank);
+    //     printf("proc : %d, joining threads\n", rank);
     for (int i = 0; i < mimpi_handler.nbr_of_proc; i++)
     {
         if (i != MIMPI_World_rank())
         {
             ASSERT_ZERO(pthread_join(mimpi_handler.reading_threads[i], NULL));
-            printf("proc %d, thread joined\n", rank);
+            //printf("proc %d, thread joined\n", rank);
         }
             
     }
 
     // if(rank == 4)
-         printf("proc : %d, threads joined, closing rest of dscrptrs\n", rank);
+    // printf("proc : %d, threads joined, closing rest of dscrptrs\n", rank);
 
     close_all_left_dscrptrs();
 
     // if(rank == 4)
-         printf("proc : %d, destructing handler\n", rank);
+    // printf("proc : %d, destructing handler\n", rank);
 
     handler_destruct(&mimpi_handler);
 
     // if(rank == 4)
-         printf("proc : %d, channels finalize\n", rank);
+    // printf("proc : %d, channels finalize\n", rank);
 
     channels_finalize();
 }
@@ -866,25 +899,7 @@ MIMPI_Retcode MIMPI_Recv(
     return ret_val_of_MIMPI_Recv;
 }
 
-void print_Ret_code(MIMPI_Retcode code)
-{
-    if (code == MIMPI_SUCCESS)
-        printf("MIMPI_SUCCESS");
-    if (code == MIMPI_ERROR_REMOTE_FINISHED)
-        printf("MIMPI_ERROR_REMOTE_FINISHED");
-}
 
-void print_msg(int tag)
-{
-    if (tag == MAKE_MIMPI_BARRIER)
-        printf("MAKE_MIMPI_BARRIER");
-    if (tag == RELEASE_MIMPI_BARRIER)
-        printf("RELEASE_MIMPI_BARRIER");
-    if (tag == CANNOT_SYNCH_BARRIER)
-        printf("CANNOT_SYNCH_BARRIER");
-    if (tag == DEFAULT_TAG)
-        printf("DEFAULT_TAG");
-}
 
 void init_sons_parent_my_rank_idx(int *my_rank, int *parent, int *left_son, int *right_son)
 {
