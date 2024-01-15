@@ -10,48 +10,8 @@
 #include <time.h>
 #include <sys/select.h>
 #include <stdatomic.h>
-
 #include <errno.h>
 
-void print_Ret_code(MIMPI_Retcode code)
-{
-    if (code == MIMPI_SUCCESS)
-        printf("MIMPI_SUCCESS\n");
-    if (code == MIMPI_ERROR_REMOTE_FINISHED)
-        printf("MIMPI_ERROR_REMOTE_FINISHED\n");
-}
-
-void print_msg(int tag)
-{
-    if (tag == MAKE_MIMPI_BARRIER)
-        printf("MAKE_MIMPI_BARRIER");
-    if (tag == RELEASE_MIMPI_BARRIER)
-        printf("RELEASE_MIMPI_BARRIER");
-    if (tag == CANNOT_SYNCH_BARRIER)
-        printf("CANNOT_SYNCH_BARRIER");
-    if (tag == DEFAULT_TAG)
-        printf("DEFAULT_TAG");
-    if (tag == PARENT_PROC_IN_FINALIZE)
-        printf("PARENT_PROC_IN_FINALIZE");
-    if (tag == SRC_PROC_IN_FINALIZE)
-        printf("SRC_PROC_IN_FINALIZE");
-    if (tag == SUCCESSFUL_BCAST)
-        printf("SUCCESSFUL_BCAST\n");
-    if (tag == CANNOT_BCAST)
-        printf("CANNOT_BCAST\n");
-    if (tag == MAKE_BCAST)
-        printf("MAKE_BCAST\n");
-    if (tag == MAKE_REDUCE)
-        printf("MAKE_REDUCE\n");
-    if (tag == CANNOT_REDUCE)
-        printf("CANNOT_REDUCE\n");
-    if (tag == NO_MSG_REDUCE)
-        printf("NO_MSG_REDUCE\n");
-    if (tag == WAITING_ON_REC_TAG)
-        printf("WAITING_ON_REC_TAG\n");
-    if (tag == FOUND_DEADLOCK_TAG)
-        printf("FOUND_DEADLOCK_TAG\n");
-}
 
 typedef struct QElem
 {
@@ -65,9 +25,7 @@ typedef struct QElem
 
 QElem *QElem_make_new(int _rank, int _tag, int _count, void *_data)
 {
-    // printf("before elem = malloc\n");
     QElem *elem = (QElem *)malloc(sizeof(QElem));
-    // printf("after elem = malloc\n");
     elem->proc_rank = _rank;
     elem->tag = _tag;
     elem->count = _count;
@@ -348,7 +306,7 @@ void *read_what_other_proc_send(void *arg)
 
     int MY_STDIN = SRC_STARTING_DSCRPT + 2 * parent_rank;
     int MY_STDIN_FROM_PARENT = PARENT_DSCRPT + 2 * parent_rank;
-    // printf("My parent: %d, his stdin: %d\n", parent_rank, MY_STDIN_FROM_PARENT);
+    
     //  Needed for fd_set.
     int bigger_stdin =
         (MY_STDIN > MY_STDIN_FROM_PARENT) ? MY_STDIN : MY_STDIN_FROM_PARENT;
@@ -362,7 +320,7 @@ void *read_what_other_proc_send(void *arg)
 
     // This set will be used to wait for either tag from src proc or parent proc
     fd_set dscrpt_set_src_and_parent;
-    //printf("thread %d starting\n", MIMPI_World_rank());
+    
     while (true)
     {
         // We don't need to acquire mutex, since we only read from array, which
@@ -390,75 +348,43 @@ void *read_what_other_proc_send(void *arg)
         // that someone wrote sth to MY_STDIN.
         if (FD_ISSET(MY_STDIN, &dscrpt_set_src_and_parent))
         {
-            // if(parent_rank == 4)
-            //     printf("proc %d, thread waiting to receive FROM SOURCE %d\n", parent_rank, source_rank);
-
             if (atomic_load(&mimpi_handler.proc_left_MIMPI[parent_rank]))
             {
-                // if(parent_rank == 0)
-                //     printf("proc %d, thread waiting to receive FROM SOURCE, but PARENT ALREADY IN FINALIZE!!!\n", parent_rank);
-
                 break;
             }
             // We get message from source proc.
             chrecv(MY_STDIN, &tag, sizeof(tag));
-
-            // if (parent_rank == 4)
-            // {
-                //printf("thread %d FROM SOURCE, tag : %d", parent_rank, tag);
-            //     print_msg(tag);
-            //     printf("\n");
-            // }
         }
         else
         {
-            // if(parent_rank == 0)
-            //     printf("proc %d, thread waiting to receive FROM PARENT\n", parent_rank);
-
             chrecv(MY_STDIN_FROM_PARENT, &tag, sizeof(tag));
         }
 
-        // printf("Got tag %d\n", tag);
         //  We check the message we got, if its not one of the two below we can
         //  read more data from pipe.
         if (tag == PARENT_PROC_IN_FINALIZE)
         {
-            // printf("thread breaking : parent %d proc in finalize\n", parent_rank);
             break;
         }
         else if (tag == SRC_PROC_IN_FINALIZE)
         {
             // Message from src proc that it left mIMPI, so we need to inform
             // that it left and if needed wake up my parent process.
-            // if(parent_rank == 4)
-            // printf("thread breaking : src proc %d, left mimpi, informing parent\n", source_rank);
             inform_that_SRCproc_left_MIMPI_mutex(source_rank);
             break;
         }
         else if (tag == WAITING_ON_REC_TAG)
         {
             // I'm process with higher rank than the one sending msg
-
             chrecv(MY_STDIN, &count, sizeof(count));
-            // printf("thred %d count = %d\n", MIMPI_World_rank(), count);
             received_data = malloc(count);
 
             chrecv(MY_STDIN, received_data, PIPE_READ_SIZE);
 
-            // printf("thread %d read extended data about WAITING_ON_REC\n", MIMPI_World_rank());
-            //  int *got = (int*)received_data;
-            //  printf("gotten tag: %d\n", got[0]);
-            //  printf("gotten count: %d\n", got[1]);
-
             QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
-            // printf("thread after Qelem new\n");
-            // printf("thread %d adding data to queue\n", MIMPI_World_rank());
+            
             add_received_data_to_MIMPI_mutex(elem, source_rank);
-            // printf("thread after add recieved data\n");
-            // printf("thread %d BEFORE informing that got WAITING_ON_REC", MIMPI_World_rank());
             inform_that_OTHERproc_waits_on_receive(source_rank, WAITING_ON_REC_TAG);
-            // printf("thread after informing other proc waits on receive\n");
-            // printf("thread %d AFTER informing that got WAITING_ON_REC\n", MIMPI_World_rank());
         }
         else if (tag == NO_LONGER_WAITING_ON_REC_TAG)
         {
@@ -475,7 +401,6 @@ void *read_what_other_proc_send(void *arg)
         }
         else if (tag == FOUND_DEADLOCK_TAG)
         {
-            // printf("Thread %d informs parent that FOUND_DEADLOCK\n", parent_rank);
             chrecv(MY_STDIN, &count, sizeof(count));
             received_data = malloc(count);
 
@@ -495,27 +420,18 @@ void *read_what_other_proc_send(void *arg)
             // so that we could store all read data and in future parent process
             // could copy this data.
             chrecv(MY_STDIN, &count, sizeof(count));
-            //printf("thread %d received count %d\n", MIMPI_World_rank(), count);
 
             received_data = malloc(count);
             int read_bytes = 0;
             int bytes_left = 0;
-            //printf("thread %d allocated memory, started reading\n", MIMPI_World_rank());
+            
             // Count might be greater than pipes buffor so we need to read from
             // buffor till read_bytes are equal to our count.
             while (read_bytes < count)
             {
-                // if(bytes_left < 10000)
-                //     printf("bytes left: %d\n", bytes_left);
-                // received_data is a pointer to the 0 elem of our array, so in
-                // order not to overwrite already saved data we need to save new
-                // data starting from first free place.
-                // We can only read PIPE_READ_SIZE bytes atomically from pipe, so we
-                // either read 512 bytes or less than 512 bytes in one read.
                 bytes_left = count - read_bytes; 
                 if (bytes_left > PIPE_READ_SIZE)
                 {
-                    
                     read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
                                          PIPE_READ_SIZE);
                 }
@@ -526,8 +442,7 @@ void *read_what_other_proc_send(void *arg)
                 }
 
             }
-            // read_bytes = 0;
-            //printf("thread %d, makes new elem\n", MIMPI_World_rank());
+            
             QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
 
             // add_received_data acquires mutex, adds data to queue and if added
@@ -555,29 +470,17 @@ void close_redundant_dscrpt()
 
     while (curr_proc < nbr_proc)
     {
-        // printf("curr_proc: %d\n", curr_proc);
         curr_rank = 0;
 
         if (curr_proc == my_rank)
         {
-            // printf("curr_proc = my_rank = %d\n", my_rank);
             //   When curr_proc is equal to our rank, we close only reading ends
             //   of our pipes, since we will use them to write, and others will
             //   read from them.
             while (curr_rank < nbr_proc)
             {
-                if (curr_proc == curr_rank)
+                if (curr_proc != curr_rank)
                 {
-                    // printf("closing %d, %d\n",
-                    //      curr_read_dscrpt, curr_read_dscrpt + 1);
-                    // We dont close our reading and writing dscrpt since we
-                    // will use them to communicate with our threads.
-                    // close(curr_read_dscrpt);
-                    // close(curr_read_dscrpt + 1);
-                }
-                else
-                {
-                    // printf("closing read %d\n", curr_read_dscrpt);
                     close(curr_read_dscrpt);
                 }
                 curr_rank++;
@@ -586,21 +489,17 @@ void close_redundant_dscrpt()
         }
         else // curr_proc != my_rank
         {
-            // printf("curr_proc != my_rank\n");
             while (curr_rank < nbr_proc)
             {
                 // If curr_proc is not us, we close all pipes except our pipe
                 // in curr_proc. In our pipe we close read end of pipe.
                 if (my_rank != curr_rank)
                 {
-                    // printf("closing %d, %d\n",
-                    //      curr_read_dscrpt, curr_read_dscrpt + 1);
                     close(curr_read_dscrpt);
                     close(curr_read_dscrpt + 1);
                 }
                 else
                 {
-                    // printf("closing write %d\n", curr_read_dscrpt + 1);
                     close(curr_read_dscrpt + 1);
                 }
                 curr_rank++;
@@ -609,7 +508,6 @@ void close_redundant_dscrpt()
         }
 
         curr_proc++;
-        // printf("---------------\n");
     }
 }
 
@@ -621,9 +519,6 @@ void MIMPI_Init(bool enable_deadlock_detection)
 
     int my_rank = MIMPI_World_rank();
 
-    // if(my_rank == 0)
-    //     sleep(1);
-
     for (int proc_rank = 0; proc_rank < mimpi_handler.nbr_of_proc; proc_rank++)
     {
         if (proc_rank != my_rank)
@@ -632,7 +527,6 @@ void MIMPI_Init(bool enable_deadlock_detection)
             int *rank_for_thread = (int *)malloc(sizeof(int));
             *rank_for_thread = proc_rank;
 
-            // printf("Creating thread for reading from proc %d\n", proc_rank);
             ASSERT_ZERO(pthread_create(
                 &mimpi_handler.reading_threads[proc_rank], NULL, read_what_other_proc_send, (void *)rank_for_thread));
         }
@@ -647,17 +541,10 @@ void send_finalize_to_all_threads()
     int nbr_proc = MIMPI_World_size();
     int MY_STARTING_DSCRPT = OFFSET + my_rank * 2 * nbr_proc;
     int MY_STDOUT = MY_STARTING_DSCRPT + 2 * my_rank + 1;
-    // Read dscrpt are firs ones, write are second ones, so MY_STARTING_DSCRPT
+    // Read dscrpt are first ones, write are second ones, so MY_STARTING_DSCRPT
     // is a first read dscrpt, thus each time we find read dscrpt and to get
     // write dscrpt we need to add 1.
     // !!!!! POSSIBLE THAT IN MIMPI PROC_LEFT_MIMPI
-
-    // if (my_rank == 4)
-    // {
-    //     for (int i = 0; i < nbr_proc; i++)
-    //         printf("thread %d left: %d\n", i, atomic_load(&mimpi_handler.proc_left_MIMPI[i]));
-    // }
-
     int tag = PARENT_PROC_IN_FINALIZE;
     for (int i = 0; i < nbr_proc; i++)
     {
@@ -678,11 +565,6 @@ void send_finalize_to_all_other_proc()
     int MY_STARTING_DSCRPT = OFFSET + my_rank * 2 * nbr_proc;
     int MY_STDOUT;
     int tag = SRC_PROC_IN_FINALIZE;
-    // if (my_rank == 4 || my_rank == 1)
-    // {
-    //     for (int i = 0; i < nbr_proc; i++)
-    //         printf("I am proc %d, proc %d left: %d\n", my_rank, i, atomic_load(&mimpi_handler.proc_left_MIMPI[i]));
-    // }
 
     for (int proc_rank = 0; proc_rank < nbr_proc; proc_rank++)
     {
@@ -690,8 +572,6 @@ void send_finalize_to_all_other_proc()
         {
             if (!atomic_load(&mimpi_handler.proc_left_MIMPI[proc_rank]))
             {
-                // if (my_rank == 4 || my_rank == 1)
-                //     printf("proc : %d sending finalize to proc %d\n", my_rank, proc_rank);
                 MY_STDOUT = MY_STARTING_DSCRPT + 2 * proc_rank + 1;
                 chsend(MY_STDOUT, &tag, sizeof(tag));
             }
@@ -705,7 +585,7 @@ void close_all_left_dscrptrs()
     int my_rank = MIMPI_World_rank();
     int curr_read_dscrpt;
     int i;
-    // printf("MIMPI FINALIZE\n");
+    
     for (int curr_proc = 0; curr_proc < nbr_proc; curr_proc++)
     {
         curr_read_dscrpt = OFFSET + curr_proc * 2 * nbr_proc;
@@ -713,14 +593,13 @@ void close_all_left_dscrptrs()
         if (curr_proc == my_rank)
         {
             i = 0;
-            // printf("curr_proc == my_rank\n");
+            
             while (i < nbr_proc)
             {
                 // In my_rank process we left opened all write ends of pipes,
                 // so we need to close them now.
                 if (i != my_rank)
                 {
-                    // printf("closing read: %d\n", curr_read_dscrpt + 1);
                     close(curr_read_dscrpt + 1);
                 }
                 else
@@ -738,7 +617,6 @@ void close_all_left_dscrptrs()
             // We need to close only reading ends of pipes from other process'
             // at our indexes, cause all other ends are already closed.
             curr_read_dscrpt += 2 * my_rank;
-            // printf("closing %d\n", curr_read_dscrpt);
 
             close(curr_read_dscrpt);
         }
@@ -747,52 +625,25 @@ void close_all_left_dscrptrs()
 
 void MIMPI_Finalize()
 {
-    // int rank = MIMPI_World_rank();
-    // if(rank == 1)
-    //     Msleep(100);
-    // printf("proc %d in finalize\n", MIMPI_World_rank());
     ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
 
     atomic_store(&mimpi_handler.proc_left_MIMPI[MIMPI_World_rank()], true);
 
     ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
 
-    // int rank = MIMPI_World_rank();
-
-    // if(rank == 4)
-    //     printf("proc : %d, sending finalize to proc\n", rank);
-
     send_finalize_to_all_other_proc();
-
-    // if(rank == 4)
-    //     printf("proc : %d, sending finalize to threads\n", rank);
-
     send_finalize_to_all_threads();
 
-    // if(rank == 4)
-    //     printf("proc : %d, joining threads\n", rank);
     for (int i = 0; i < mimpi_handler.nbr_of_proc; i++)
     {
         if (i != MIMPI_World_rank())
         {
             ASSERT_ZERO(pthread_join(mimpi_handler.reading_threads[i], NULL));
-            // printf("proc %d, thread joined\n", rank);
         }
     }
 
-    // if(rank == 4)
-    // printf("proc : %d, threads joined, closing rest of dscrptrs\n", rank);
-
     close_all_left_dscrptrs();
-
-    // if(rank == 4)
-    // printf("proc : %d, destructing handler\n", rank);
-
     handler_destruct(&mimpi_handler);
-
-    // if(rank == 4)
-    // printf("proc : %d, channels finalize\n", rank);
-
     channels_finalize();
 }
 
@@ -844,6 +695,7 @@ MIMPI_Retcode MIMPI_Send(
     // Firstly we store tag, than count than rest of data.
     unsigned long buffer_size = sizeof(tag) + sizeof(count) + count;
     void *buffer = malloc(buffer_size);
+
     // We memcpy data to our buffer, starting from ptr buffer, but then we need
     // to move our starting pointer by number of saved bytes.
     memcpy(buffer, &tag, sizeof(tag));
@@ -919,10 +771,9 @@ bool older_proc_deadlock_detection(int source, QElem *elem,
         //  If we are older proc, we check if we got any msg from source
         //  about it waiting to receive from us.
         elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, WAITING_ON_REC_TAG, sizeof(uint8_t));
-        // printf("OLDproc %d AFTER looking for deadlock msgs\n", MIMPI_World_rank());
+        
         if (elem != NULL)
         {
-            //printf("OLDproc %d found WAITING ON REC\n", MIMPI_World_rank());
             QElem_destruct(elem);
             // If we found such message we check again whether source
             // sent another msg that it is no longer waiting, cause
@@ -933,27 +784,17 @@ bool older_proc_deadlock_detection(int source, QElem *elem,
 
             if (elem == NULL)
             {
-                //printf("OLDproc %d found DEADLOCK, no second msg\n", MIMPI_World_rank());
                 //  If another msg is not present we have DEADLOCK.
                 deadlock = true;
                 *ret_val = MIMPI_ERROR_DEADLOCK_DETECTED;
                 set_wanted_flags_to_NOT_WANTED();
-
-                // printf("OLDproc %d BEFORE informing src proc about possible deadlock\n", MIMPI_World_rank());
-
                 inform_SRCproc_about_possible_deadlock(source, FOUND_DEADLOCK_TAG);
-
-                //printf("OLDproc %d informed src proc about possible deadlock\n", MIMPI_World_rank());
             }
             else
             {
-                //printf("OLDproc %d found SECOND MSG, no DEADLOCK\n", MIMPI_World_rank());
                 QElem_destruct(elem);
-                // printf("OLDproc %d destructed elem\n", MIMPI_World_rank());
             }
         }
-        // else
-        // printf("OLDproc %d DIDNT find any DEADLOCK MSGS\n", MIMPI_World_rank());
     }
 
     return deadlock;
@@ -973,22 +814,14 @@ MIMPI_Retcode MIMPI_Recv(
     MIMPI_Retcode ret_val_of_Recv = MIMPI_SUCCESS;
 
     bool found_sought_data = false;
-    //printf("proc %d receiving data, count : %d\n", MIMPI_World_rank(), count);
+   
     ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
-    // if deadlock enabled - check if exists elem in queue that has tag
-    // NO LONGER WAITING and its prior to WAITING ON RECV if yes, remove it.
-    // if(mimpi_handler.deadlock_enabled && MIMPI_World_rank() > source)
-    // {
-    //     printf("proc %d removing no_lnoger waitings\n", MIMPI_World_rank());
-    //     queue_remove_all_no_longer_waiting_if_prior_to_waiting_tag(&mimpi_handler.tab_of_queues[source]);
-    // }
 
     QElem *elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, tag, count);
     mimpi_handler.is_sought_data_present = false;
 
     if (elem != NULL)
     {
-        //printf("proc %d FOUND DATA AT FIRST TRY\n", MIMPI_World_rank());
         found_sought_data = true;
         cpy_rec_data_to_dest_set_wanted_flags(data, elem, count, source);
     }
@@ -1007,13 +840,12 @@ MIMPI_Retcode MIMPI_Recv(
     {
 
         ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
-        //printf("proc %d locked mutex\n", MIMPI_World_rank());
+
         //  In the meantime data we want could be sent, so we check.
         elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, tag, count);
 
         if (elem != NULL)
         {
-            //printf("proc %d FOUND DATA AT SECOND TRY\n", MIMPI_World_rank());
             mimpi_handler.parent_wake_up = false;
             ret_val_of_Recv = MIMPI_SUCCESS;
 
@@ -1030,29 +862,25 @@ MIMPI_Retcode MIMPI_Recv(
                 if (atomic_load(&mimpi_handler.proc_left_MIMPI[source]) &&
                     !mimpi_handler.is_sought_data_present)
                 {
-                    //printf("proc %d, my SRC %d left mimpi, first if\n",MIMPI_World_rank(), source);
                     //  We didnt find data and src proc left mimpi, so we end.
                     ret_val_of_Recv = MIMPI_ERROR_REMOTE_FINISHED;
                 }
                 else
                 {
-                    //printf("proc %d didnt find wanted data\n",MIMPI_World_rank());
                     //  If we are younger proc, we didnt find wanted data, so
                     //  just before we start waiting we tell this to older proc.
                     if (MIMPI_World_rank() < source &&
                         mimpi_handler.deadlock_enabled &&
                         !mimpi_handler.parent_wake_up)
                     {
-                        //printf("proc %d informing older WAITING ON REC\n", MIMPI_World_rank());
                         inform_SRCproc_about_possible_deadlock(source, WAITING_ON_REC_TAG);
-                        //younger_informs_its_waiting(source, tag, count, WAITING_ON_REC_TAG);
                     }
-                    //printf("proc %d before while\n", MIMPI_World_rank());
+                    
                     while (!mimpi_handler.parent_wake_up)
                     {
                         ASSERT_ZERO(pthread_cond_wait(&mimpi_handler.parent_cond, &mimpi_handler.mutex));
                     }
-                    //printf("proc %d after while\n", MIMPI_World_rank());
+                    
                     //  We are woken up, there are three reasons:
                     //  1) Data we want is present
                     //  2) Src proc left mimpi
@@ -1065,7 +893,6 @@ MIMPI_Retcode MIMPI_Recv(
 
                     if (elem != NULL)
                     {
-                        //printf("proc %d found data, after while\n", MIMPI_World_rank());
                         //  1) Wanted data present.
                         ret_val_of_Recv = MIMPI_SUCCESS;
                         cpy_rec_data_to_dest_set_wanted_flags(data, elem, count, source);
@@ -1073,13 +900,11 @@ MIMPI_Retcode MIMPI_Recv(
                         if (mimpi_handler.deadlock_enabled &&
                             MIMPI_World_rank() < source)
                         {
-                            //printf("proc %d informing NO_LONGER_WAITING\n", MIMPI_World_rank());
                             inform_SRCproc_about_possible_deadlock(source, NO_LONGER_WAITING_ON_REC_TAG);
                         }
                     }
                     else
                     {
-                        //printf("proc %d didnt find wanted data AGAIN!!!\n",MIMPI_World_rank());
                         //  2) or 3) - we didnt find wanted data, even though
                         //  we were woken up. So either deadlock or src lft mimpi
                         bool is_deadlock = false;
@@ -1087,7 +912,6 @@ MIMPI_Retcode MIMPI_Recv(
                         if (mimpi_handler.deadlock_enabled &&
                             MIMPI_World_rank() < source)
                         {
-                            //printf("proc %d checking msg about FOUND_DEADLOCK\n", MIMPI_World_rank());
                             //  3) We are younger proc so we check if we get msg
                             //  from older about deadlock.
                             elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, FOUND_DEADLOCK_TAG,
@@ -1095,7 +919,6 @@ MIMPI_Retcode MIMPI_Recv(
 
                             if (elem != NULL)
                             {
-                                //printf("proc %d got msg FOUND_DEADLOCK\n",MIMPI_World_rank());
                                 //  3) There is a deadlock, we return error.
                                 QElem_destruct(elem);
                                 ret_val_of_Recv = MIMPI_ERROR_DEADLOCK_DETECTED;
@@ -1105,14 +928,10 @@ MIMPI_Retcode MIMPI_Recv(
                         if (mimpi_handler.deadlock_enabled &&
                             MIMPI_World_rank() > source)
                         {
-                            //printf("proc %d checking if younger WAITING ON REC\n", MIMPI_World_rank());
                             //  3) We are older proc, we check msgs from younger
                             //  proc, if there is only one this means 3) deadlock
                             //  if there are two, this means 2) src left mimpi
                             is_deadlock = older_proc_deadlock_detection(source, elem, &ret_val_of_Recv);
-
-                            // if(is_deadlock)
-                            //     printf("proc %d there is deadlock\n", MIMPI_World_rank());
                         }
 
                         if (!is_deadlock)
@@ -1126,7 +945,6 @@ MIMPI_Retcode MIMPI_Recv(
             }
         }
         ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
-        // printf("proc %d UNlocked mutex\n", MIMPI_World_rank());
     }
     return ret_val_of_Recv;
 }
