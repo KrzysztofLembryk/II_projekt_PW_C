@@ -460,12 +460,45 @@ void *read_what_other_proc_send(void *arg)
         else if (tag == WAITING_ON_REC_TAG)
         {
             // I'm process with higher rank than the one sending msg
-            // printf("Thread %d informs parent that WAITING_ON_REC\n", parent_rank);
+            
+            chrecv(MY_STDIN, &count, sizeof(count));
+            received_data = malloc(count);
+
+            chrecv(MY_STDIN, received_data, PIPE_READ_SIZE);
+
+            QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
+
+            add_received_data_to_MIMPI_mutex(elem, source_rank);
+
             inform_that_OTHERproc_waits_on_receive(source_rank, WAITING_ON_REC_TAG);
+        }
+        else if(tag == NO_LONGER_WAITING_ON_REC_TAG)
+        {
+            chrecv(MY_STDIN, &count, sizeof(count));
+            received_data = malloc(count);
+
+            chrecv(MY_STDIN, received_data, PIPE_READ_SIZE);
+            
+            QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
+
+            add_received_data_to_MIMPI_mutex(elem, source_rank);
+
+
+            inform_that_OTHERproc_waits_on_receive(source_rank, NO_LONGER_WAITING_ON_REC_TAG);
         }
         else if (tag == FOUND_DEADLOCK_TAG)
         {
             // printf("Thread %d informs parent that FOUND_DEADLOCK\n", parent_rank);
+            chrecv(MY_STDIN, &count, sizeof(count));
+            received_data = malloc(count);
+
+            chrecv(MY_STDIN, received_data, PIPE_READ_SIZE);
+            
+            QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
+
+            add_received_data_to_MIMPI_mutex(elem, source_rank);
+
+
             inform_that_OTHERproc_waits_on_receive(source_rank, FOUND_DEADLOCK_TAG);
         }
         else
@@ -975,7 +1008,8 @@ MIMPI_Retcode MIMPI_Recv(
         else
         {
             // We know for sure now that data we wanted is not present.
-            bool deadlock = older_proc_deadlock_detection(source, elem, ret_val_of_Recv);
+            bool deadlock = older_proc_deadlock_detection(source, elem, 
+                &ret_val_of_Recv);
             
             if (!deadlock)
             {
@@ -1051,7 +1085,7 @@ MIMPI_Retcode MIMPI_Recv(
                             // 3) We are older proc, we check msgs from younger
                             // proc, if there is only one this means 3) deadlock
                             // if there are two, this means 2) src left mimpi
-                            is_deadlock = older_proc_deadlock_detection(source, elem, ret_val_of_Recv);
+                            is_deadlock = older_proc_deadlock_detection(source, elem, &ret_val_of_Recv);
                         }
 
                         if (!is_deadlock)
