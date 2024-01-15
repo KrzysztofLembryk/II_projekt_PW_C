@@ -440,7 +440,7 @@ void *read_what_other_proc_send(void *arg)
 
     // This set will be used to wait for either tag from src proc or parent proc
     fd_set dscrpt_set_src_and_parent;
-    printf("thread %d starting\n", MIMPI_World_rank());
+    //printf("thread %d starting\n", MIMPI_World_rank());
     while (true)
     {
         // We don't need to acquire mutex, since we only read from array, which
@@ -485,7 +485,7 @@ void *read_what_other_proc_send(void *arg)
 
             // if (parent_rank == 4)
             // {
-                 printf("thread %d FROM SOURCE, tag : %d", parent_rank, tag);
+                //printf("thread %d FROM SOURCE, tag : %d", parent_rank, tag);
             //     print_msg(tag);
             //     printf("\n");
             // }
@@ -575,13 +575,12 @@ void *read_what_other_proc_send(void *arg)
             // so that we could store all read data and in future parent process
             // could copy this data.
             chrecv(MY_STDIN, &count, sizeof(count));
-            printf("thread %d received count %d\n", MIMPI_World_rank(), count);
+            //printf("thread %d received count %d\n", MIMPI_World_rank(), count);
 
             received_data = malloc(count);
             int read_bytes = 0;
             int bytes_left = 0;
-            int rec_bytes = 0;
-            printf("thread %d allocated memory, started reading\n", MIMPI_World_rank());
+            //printf("thread %d allocated memory, started reading\n", MIMPI_World_rank());
             // Count might be greater than pipes buffor so we need to read from
             // buffor till read_bytes are equal to our count.
             while (read_bytes < count)
@@ -597,12 +596,8 @@ void *read_what_other_proc_send(void *arg)
                 if (bytes_left > PIPE_READ_SIZE)
                 {
                     
-                    rec_bytes = chrecv(MY_STDIN, received_data + read_bytes,
+                    read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
                                          PIPE_READ_SIZE);
-                    // if(bytes_left < 5000)
-                    //     printf("rec bytes = %d\n", rec_bytes);
-                    
-                    read_bytes += rec_bytes;
                 }
                 else
                 {
@@ -613,7 +608,7 @@ void *read_what_other_proc_send(void *arg)
 
             }
             // read_bytes = 0;
-            printf("thread %d, makes new elem\n", MIMPI_World_rank());
+            //printf("thread %d, makes new elem\n", MIMPI_World_rank());
             QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
 
             // add_received_data acquires mutex, adds data to queue and if added
@@ -1098,7 +1093,7 @@ MIMPI_Retcode MIMPI_Recv(
     MIMPI_Retcode ret_val_of_Recv = MIMPI_SUCCESS;
 
     bool found_sought_data = false;
-    printf("proc %d receiving data, count : %d\n", MIMPI_World_rank(), count);
+    //printf("proc %d receiving data, count : %d\n", MIMPI_World_rank(), count);
     ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
     // if deadlock enabled - check if exists elem in queue that has tag
     // NO LONGER WAITING and its prior to WAITING ON RECV if yes, remove it.
@@ -1113,7 +1108,7 @@ MIMPI_Retcode MIMPI_Recv(
 
     if (elem != NULL)
     {
-        printf("proc %d FOUND DATA AT FIRST TRY\n", MIMPI_World_rank());
+        //printf("proc %d FOUND DATA AT FIRST TRY\n", MIMPI_World_rank());
         found_sought_data = true;
         cpy_rec_data_to_dest_set_wanted_flags(data, elem, count, source);
     }
@@ -1138,7 +1133,7 @@ MIMPI_Retcode MIMPI_Recv(
 
         if (elem != NULL)
         {
-            printf("proc %d FOUND DATA AT SECOND TRY\n", MIMPI_World_rank());
+            //printf("proc %d FOUND DATA AT SECOND TRY\n", MIMPI_World_rank());
             mimpi_handler.parent_wake_up = false;
             ret_val_of_Recv = MIMPI_SUCCESS;
 
@@ -1161,7 +1156,7 @@ MIMPI_Retcode MIMPI_Recv(
                 }
                 else
                 {
-                    printf("proc %d didnt find wanted data\n",MIMPI_World_rank());
+                    //printf("proc %d didnt find wanted data\n",MIMPI_World_rank());
                     //  If we are younger proc, we didnt find wanted data, so
                     //  just before we start waiting we tell this to older proc.
                     if (MIMPI_World_rank() < source &&
@@ -1172,12 +1167,12 @@ MIMPI_Retcode MIMPI_Recv(
                         inform_SRCproc_about_possible_deadlock(source, WAITING_ON_REC_TAG);
                         // younger_informs_its_waiting(source, tag, count, WAITING_ON_REC_TAG);
                     }
-                    printf("proc %d before while\n", MIMPI_World_rank());
+                    //printf("proc %d before while\n", MIMPI_World_rank());
                     while (!mimpi_handler.parent_wake_up)
                     {
                         ASSERT_ZERO(pthread_cond_wait(&mimpi_handler.parent_cond, &mimpi_handler.mutex));
                     }
-                    printf("proc %d after while\n", MIMPI_World_rank());
+                    //printf("proc %d after while\n", MIMPI_World_rank());
                     //  We are woken up, there are three reasons:
                     //  1) Data we want is present
                     //  2) Src proc left mimpi
@@ -1190,7 +1185,7 @@ MIMPI_Retcode MIMPI_Recv(
 
                     if (elem != NULL)
                     {
-                        printf("proc %d found data, after while\n", MIMPI_World_rank());
+                        //printf("proc %d found data, after while\n", MIMPI_World_rank());
                         //  1) Wanted data present.
                         ret_val_of_Recv = MIMPI_SUCCESS;
                         cpy_rec_data_to_dest_set_wanted_flags(data, elem, count, source);

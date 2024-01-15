@@ -58,7 +58,7 @@ unsigned char myRand4()
 int main(int argc, char **argv)
 {
     MIMPI_Init(false);
-/*
+
     int const world_rank = MIMPI_World_rank();
     int const world_size = MIMPI_World_size();
 
@@ -100,6 +100,6 @@ int main(int argc, char **argv)
     MIMPI_Barrier();
     fflush(stdout);
     MIMPI_Finalize();
-    */
+    
     return test_success();
 }
