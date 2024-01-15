@@ -86,9 +86,9 @@ typedef struct QElem
 
 QElem *QElem_make_new(int _rank, int _tag, int _count, void *_data)
 {
-    printf("before elem = malloc\n");
+    //printf("before elem = malloc\n");
     QElem *elem = (QElem *)malloc(sizeof(QElem));
-    printf("after elem = malloc\n");
+    //printf("after elem = malloc\n");
     elem->proc_rank = _rank;
     elem->tag = _tag;
     elem->count = _count;
@@ -389,16 +389,16 @@ void add_received_data_to_MIMPI_mutex(QElem *elem, int source_rank)
     // to our queue list. Then we check if added data by us is data that
     // parent wants.
     ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
-    printf("thread %d before pushback when adding new data\n", MIMPI_World_rank());
+    //printf("thread %d before pushback when adding new data\n", MIMPI_World_rank());
     queue_push_back(&(mimpi_handler.tab_of_queues[source_rank]), elem);
     
-    printf("thread %d AFTER pushback when adding new data\n", MIMPI_World_rank());
+    //printf("thread %d AFTER pushback when adding new data\n", MIMPI_World_rank());
     // If elem we added is the one that parent looks for we signal the
     // parent and give him critical section.
     if (QElem_is_the_same(elem, mimpi_handler.wanted_rank,
                           mimpi_handler.wanted_tag, mimpi_handler.wanted_count))
     {
-        printf("Added elem to queue is sought by parent, I'm waking him up\n");
+        //printf("Added elem to queue is sought by parent, I'm waking him up\n");
         mimpi_handler.is_sought_data_present = true;
         mimpi_handler.parent_wake_up = true;
         ASSERT_ZERO(pthread_cond_signal(&mimpi_handler.parent_cond));
@@ -520,7 +520,7 @@ void *read_what_other_proc_send(void *arg)
             // I'm process with higher rank than the one sending msg
 
             chrecv(MY_STDIN, &count, sizeof(count));
-            printf("thred %d count = %d\n", MIMPI_World_rank(), count);
+            //printf("thred %d count = %d\n", MIMPI_World_rank(), count);
             received_data = malloc(count);
 
 
@@ -532,13 +532,13 @@ void *read_what_other_proc_send(void *arg)
             // printf("gotten count: %d\n", got[1]);
 
             QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
-            printf("thread after Qelem new\n");
+            //printf("thread after Qelem new\n");
             //printf("thread %d adding data to queue\n", MIMPI_World_rank());
             add_received_data_to_MIMPI_mutex(elem, source_rank);
-            printf("thread after add recieved data\n");
+            //printf("thread after add recieved data\n");
             //printf("thread %d BEFORE informing that got WAITING_ON_REC", MIMPI_World_rank());
             inform_that_OTHERproc_waits_on_receive(source_rank, WAITING_ON_REC_TAG);
-            printf("thread after informing other proc waits on receive\n");
+            //printf("thread after informing other proc waits on receive\n");
             //printf("thread %d AFTER informing that got WAITING_ON_REC\n", MIMPI_World_rank());
         }
         else if (tag == NO_LONGER_WAITING_ON_REC_TAG)
@@ -1001,7 +1001,7 @@ void inform_SRCproc_about_possible_deadlock(int source, int deadlock_tag)
 void younger_informs_its_waiting(int source, int src_tag,
                                  int src_count, int deadlock_tag)
 {
-    printf("proc %d sending extended info about WAITING IN REC\n", MIMPI_World_rank());
+    //printf("proc %d sending extended info about WAITING IN REC\n", MIMPI_World_rank());
     int *some_data = calloc(2, sizeof(int));
     some_data[0] = src_tag;
     some_data[1] = src_count;
@@ -1017,14 +1017,14 @@ bool older_proc_deadlock_detection(int source, QElem *elem,
     if (mimpi_handler.deadlock_enabled &&
         MIMPI_World_rank() > source)
     {
-        printf("OLDproc %d looking for deadlock msgs\n", MIMPI_World_rank());
+        //printf("OLDproc %d looking for deadlock msgs\n", MIMPI_World_rank());
         // If we are older proc, we check if we got any msg from source
         // about it waiting to receive from us.
         elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, WAITING_ON_REC_TAG, sizeof(uint8_t));
-        printf("OLDproc %d AFTER looking for deadlock msgs\n", MIMPI_World_rank());
+        //printf("OLDproc %d AFTER looking for deadlock msgs\n", MIMPI_World_rank());
         if (elem != NULL)
         {
-            printf("OLDproc %d found WAITING ON REC\n", MIMPI_World_rank());
+            //printf("OLDproc %d found WAITING ON REC\n", MIMPI_World_rank());
             QElem_destruct(elem);
             // If we found such message we check again whether source
             // sent another msg that it is no longer waiting, cause
@@ -1035,23 +1035,23 @@ bool older_proc_deadlock_detection(int source, QElem *elem,
 
             if (elem == NULL)
             {
-                printf("OLDproc %d found DEADLOCK, no second msg\n", MIMPI_World_rank());
+                //printf("OLDproc %d found DEADLOCK, no second msg\n", MIMPI_World_rank());
                 // If another msg is not present we have DEADLOCK.
                 deadlock = true;
                 *ret_val = MIMPI_ERROR_DEADLOCK_DETECTED;
                 set_wanted_flags_to_NOT_WANTED();
 
-                printf("OLDproc %d BEFORE informing src proc about possible deadlock\n", MIMPI_World_rank());
+                //printf("OLDproc %d BEFORE informing src proc about possible deadlock\n", MIMPI_World_rank());
 
                 inform_SRCproc_about_possible_deadlock(source, FOUND_DEADLOCK_TAG);
 
-                printf("OLDproc %d informed src proc about possible deadlock\n", MIMPI_World_rank());
+                //printf("OLDproc %d informed src proc about possible deadlock\n", MIMPI_World_rank());
             }
             else
             {
-                printf("OLDproc %d found SECOND MSG, no DEADLOCK\n", MIMPI_World_rank());
+                //printf("OLDproc %d found SECOND MSG, no DEADLOCK\n", MIMPI_World_rank());
                 QElem_destruct(elem);
-                printf("OLDproc %d destructed elem\n", MIMPI_World_rank());
+                //printf("OLDproc %d destructed elem\n", MIMPI_World_rank());
             }
         }
         //else
@@ -1092,7 +1092,7 @@ MIMPI_Retcode MIMPI_Recv(
 
     if (elem != NULL)
     {
-        printf("proc %d FOUND DATA AT FIRST TRY\n", MIMPI_World_rank());
+        //printf("proc %d FOUND DATA AT FIRST TRY\n", MIMPI_World_rank());
         found_sought_data = true;
         cpy_rec_data_to_dest_set_wanted_flags(data, elem, count, source);
     }
@@ -1111,13 +1111,13 @@ MIMPI_Retcode MIMPI_Recv(
     {
         
         ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
-        printf("proc %d locked mutex\n", MIMPI_World_rank());
+        //printf("proc %d locked mutex\n", MIMPI_World_rank());
         // In the meantime data we want could be sent, so we check.
         elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, tag, count);
 
         if (elem != NULL)
         {
-            printf("proc %d FOUND DATA AT SECOND TRY\n", MIMPI_World_rank());
+            //printf("proc %d FOUND DATA AT SECOND TRY\n", MIMPI_World_rank());
             mimpi_handler.parent_wake_up = false;
             ret_val_of_Recv = MIMPI_SUCCESS;
 
@@ -1134,29 +1134,29 @@ MIMPI_Retcode MIMPI_Recv(
                 if (atomic_load(&mimpi_handler.proc_left_MIMPI[source]) &&
                     !mimpi_handler.is_sought_data_present)
                 {
-                    printf("proc %d, my SRC %d left mimpi, first if\n",MIMPI_World_rank(), source);
+                    //printf("proc %d, my SRC %d left mimpi, first if\n",MIMPI_World_rank(), source);
                     // We didnt find data and src proc left mimpi, so we end.
                     ret_val_of_Recv = MIMPI_ERROR_REMOTE_FINISHED;
                 }
                 else
                 {
-                    printf("proc %d didnt find wanted data\n",MIMPI_World_rank());
+                    //printf("proc %d didnt find wanted data\n",MIMPI_World_rank());
                     // If we are younger proc, we didnt find wanted data, so
                     // just before we start waiting we tell this to older proc.
                     if (MIMPI_World_rank() < source &&
                         mimpi_handler.deadlock_enabled &&
                         !mimpi_handler.parent_wake_up)
                     {
-                        printf("proc %d informing older WAITING ON REC\n", MIMPI_World_rank());
+                        //printf("proc %d informing older WAITING ON REC\n", MIMPI_World_rank());
                         inform_SRCproc_about_possible_deadlock(source, WAITING_ON_REC_TAG);
                         //younger_informs_its_waiting(source, tag, count, WAITING_ON_REC_TAG);
                     }
-                    printf("proc %d before while\n", MIMPI_World_rank());
+                    //printf("proc %d before while\n", MIMPI_World_rank());
                     while (!mimpi_handler.parent_wake_up)
                     {
                         ASSERT_ZERO(pthread_cond_wait(&mimpi_handler.parent_cond, &mimpi_handler.mutex));
                     }
-                    printf("proc %d after while\n", MIMPI_World_rank());
+                    //printf("proc %d after while\n", MIMPI_World_rank());
                     // We are woken up, there are three reasons:
                     // 1) Data we want is present
                     // 2) Src proc left mimpi
@@ -1169,7 +1169,7 @@ MIMPI_Retcode MIMPI_Recv(
 
                     if (elem != NULL)
                     {
-                        printf("proc %d found data, after while\n", MIMPI_World_rank());
+                        //printf("proc %d found data, after while\n", MIMPI_World_rank());
                         // 1) Wanted data present.
                         ret_val_of_Recv = MIMPI_SUCCESS;
                         cpy_rec_data_to_dest_set_wanted_flags(data, elem, count, source);
@@ -1177,13 +1177,13 @@ MIMPI_Retcode MIMPI_Recv(
                         if (mimpi_handler.deadlock_enabled &&
                             MIMPI_World_rank() < source)
                         {
-                            printf("proc %d informing NO_LONGER_WAITING\n", MIMPI_World_rank());
+                            //printf("proc %d informing NO_LONGER_WAITING\n", MIMPI_World_rank());
                             inform_SRCproc_about_possible_deadlock(source, NO_LONGER_WAITING_ON_REC_TAG);
                         }
                     }
                     else
                     {
-                        printf("proc %d didnt find wanted data AGAIN!!!\n",MIMPI_World_rank());
+                        //printf("proc %d didnt find wanted data AGAIN!!!\n",MIMPI_World_rank());
                         // 2) or 3) - we didnt find wanted data, even though
                         // we were woken up. So either deadlock or src lft mimpi
                         bool is_deadlock = false;
@@ -1191,7 +1191,7 @@ MIMPI_Retcode MIMPI_Recv(
                         if (mimpi_handler.deadlock_enabled &&
                             MIMPI_World_rank() < source)
                         {
-                            printf("proc %d checking msg about FOUND_DEADLOCK\n", MIMPI_World_rank());
+                            //printf("proc %d checking msg about FOUND_DEADLOCK\n", MIMPI_World_rank());
                             // 3) We are younger proc so we check if we get msg
                             // from older about deadlock.
                             elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, FOUND_DEADLOCK_TAG,
@@ -1199,7 +1199,7 @@ MIMPI_Retcode MIMPI_Recv(
 
                             if (elem != NULL)
                             {
-                                printf("proc %d got msg FOUND_DEADLOCK\n",MIMPI_World_rank());
+                                //printf("proc %d got msg FOUND_DEADLOCK\n",MIMPI_World_rank());
                                 // 3) There is a deadlock, we return error.
                                 QElem_destruct(elem);
                                 ret_val_of_Recv = MIMPI_ERROR_DEADLOCK_DETECTED;
@@ -1209,7 +1209,7 @@ MIMPI_Retcode MIMPI_Recv(
                         if (mimpi_handler.deadlock_enabled &&
                             MIMPI_World_rank() > source)
                         {
-                            printf("proc %d checking if younger WAITING ON REC\n", MIMPI_World_rank());
+                            //printf("proc %d checking if younger WAITING ON REC\n", MIMPI_World_rank());
                             // 3) We are older proc, we check msgs from younger
                             // proc, if there is only one this means 3) deadlock
                             // if there are two, this means 2) src left mimpi
@@ -1230,7 +1230,7 @@ MIMPI_Retcode MIMPI_Recv(
             }
         }
         ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
-        printf("proc %d UNlocked mutex\n", MIMPI_World_rank());
+        //printf("proc %d UNlocked mutex\n", MIMPI_World_rank());
     }
     return ret_val_of_Recv;
 }
