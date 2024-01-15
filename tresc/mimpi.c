@@ -196,6 +196,7 @@ QElem *queue_find_elem(QueueList *q, int rank, int tag, int count)
 typedef struct Handler
 {
     int nbr_of_proc;
+    bool deadlock_enabled;
     // proc_left_MIMPI - array to check when to ret MIMPI_ERROR_REMOTE_FINISHED
     // or if our parent process is in mimpi finalize.
     atomic_bool *proc_left_MIMPI;
@@ -229,13 +230,14 @@ typedef struct Handler
 
 Handler mimpi_handler;
 
-void handler_init(Handler *handler)
+void handler_init(Handler *handler, bool enable_deadlock)
 {
     handler->nbr_of_proc = MIMPI_World_size();
     handler->proc_left_MIMPI = calloc(handler->nbr_of_proc,
                                       sizeof(atomic_bool));
     handler->other_proc_wait_on_receive = calloc(handler->nbr_of_proc,
                                                  sizeof(atomic_bool));
+    handler->deadlock_enabled = enable_deadlock;
 
     for (int i = 0; i < handler->nbr_of_proc; i++)
     {
@@ -582,7 +584,7 @@ void MIMPI_Init(bool enable_deadlock_detection)
 {
     channels_init();
     close_redundant_dscrpt();
-    handler_init(&mimpi_handler);
+    handler_init(&mimpi_handler, enable_deadlock_detection);
 
     int my_rank = MIMPI_World_rank();
 
@@ -941,19 +943,19 @@ MIMPI_Retcode MIMPI_Recv(
         {
             ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
 
-            // if (atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == WAITING_ON_REC_TAG)
-            // {
-            //     ret_val_of_MIMPI_Recv = MIMPI_ERROR_DEADLOCK_DETECTED;
-            //     inform_SRCproc_about_possible_deadlock(source, FOUND_DEADLOCK_TAG);
-            //     set_wanted_flags_to_NOT_WANTED();
-            //     atomic_store(&mimpi_handler.other_proc_wait_on_receive[source], 0);
-            // }
-            if (atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == FOUND_DEADLOCK_TAG)
+            if ( !mimpi_handler.parent_wake_up && atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == WAITING_ON_REC_TAG)
             {
                 ret_val_of_MIMPI_Recv = MIMPI_ERROR_DEADLOCK_DETECTED;
+                inform_SRCproc_about_possible_deadlock(source, FOUND_DEADLOCK_TAG);
                 set_wanted_flags_to_NOT_WANTED();
                 atomic_store(&mimpi_handler.other_proc_wait_on_receive[source], 0);
             }
+            // if (mimpi_handler.deadlock_enabled && atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == FOUND_DEADLOCK_TAG)
+            // {
+            //     ret_val_of_MIMPI_Recv = MIMPI_ERROR_DEADLOCK_DETECTED;
+            //     set_wanted_flags_to_NOT_WANTED();
+            //     atomic_store(&mimpi_handler.other_proc_wait_on_receive[source], 0);
+            // }
             else if (atomic_load(&mimpi_handler.proc_left_MIMPI[source]) &&
                      !mimpi_handler.is_sought_data_present)
             {
@@ -964,13 +966,14 @@ MIMPI_Retcode MIMPI_Recv(
             {
                 bool was_parent_awake = mimpi_handler.parent_wake_up;
 
-                if (MIMPI_World_rank() < source && !mimpi_handler.parent_wake_up)
+                if (MIMPI_World_rank() < source && 
+                mimpi_handler.deadlock_enabled && 
+                !mimpi_handler.parent_wake_up)
                 {
                     inform_SRCproc_about_possible_deadlock(source, WAITING_ON_REC_TAG);
                 }
                 // printf("Parent waiting for sb to wake me up\n");
-                while (!mimpi_handler.parent_wake_up || 
-                atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) != WAITING_ON_REC_TAG)  
+                while (!mimpi_handler.parent_wake_up)
                 {
                     ASSERT_ZERO(pthread_cond_wait(&mimpi_handler.parent_cond,
                                                   &mimpi_handler.mutex));
@@ -982,7 +985,8 @@ MIMPI_Retcode MIMPI_Recv(
                 // is not NULL
                 mimpi_handler.parent_wake_up = false;
 
-                if (atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == WAITING_ON_REC_TAG)
+                if (mimpi_handler.deadlock_enabled && 
+                atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == WAITING_ON_REC_TAG)
                 {
                     // We are proc of greater rank, so we send info about deadlock
                     // to our source proc.
@@ -991,7 +995,8 @@ MIMPI_Retcode MIMPI_Recv(
                     set_wanted_flags_to_NOT_WANTED();
                     atomic_store(&mimpi_handler.other_proc_wait_on_receive[source], 0);
                 }
-                else if (atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == FOUND_DEADLOCK_TAG)
+                else if (mimpi_handler.deadlock_enabled && 
+                atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == FOUND_DEADLOCK_TAG)
                 {
                     // We got info about deadlock from source proc that has
                     // bigger rank.
