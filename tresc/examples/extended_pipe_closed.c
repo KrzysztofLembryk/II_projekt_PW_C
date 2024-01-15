@@ -78,11 +78,11 @@ int main(int argc, char **argv)
     }
     else if (world_rank == 4)
     {
-        printf("Proc %d starting\n", world_rank);
+        //printf("Proc %d starting\n", world_rank);
         // heurystyczne założenie że chwrite zakończy się z błędem "Zamknięty odpbiorca".
         setenv("CHANNELS_WRITE_DELAY", "1000", true);
         ASSERT_MIMPI_RETCODE(MIMPI_Barrier(), MIMPI_ERROR_REMOTE_FINISHED);
-        printf("Proc %d returned from Barrier\n", world_rank);
+        //printf("Proc %d returned from Barrier\n", world_rank);
     }
     else if (world_rank == 5)
     {
@@ -100,6 +100,6 @@ int main(int argc, char **argv)
     }
 
     MIMPI_Finalize();
-    printf("proc %d - Done\n", world_rank);
+    printf("Done\n");
     return test_success();
 }
