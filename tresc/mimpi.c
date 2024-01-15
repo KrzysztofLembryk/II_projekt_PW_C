@@ -1023,9 +1023,6 @@ MIMPI_Retcode Barrier_not_root(MIMPI_Retcode ret_val_recv1,
 
     if ((ret_val_recv1 != MIMPI_SUCCESS || ret_val_recv2 != MIMPI_SUCCESS) || (*tag1 == CANNOT_SYNCH_BARRIER || *tag2 == CANNOT_SYNCH_BARRIER))
     {
-        // if(my_rank == 4)
-        // printf("proc : %d one of my sons ret was not succesful, CANOOT SYNCH, informing parent\n", my_rank);
-
         inform_retcode = inform_parent_about_state_of_barrier(CANNOT_SYNCH_BARRIER, FIRST_STAGE_TAG);
 
         // If we get error from inform_func this means that our parent has
@@ -1034,46 +1031,27 @@ MIMPI_Retcode Barrier_not_root(MIMPI_Retcode ret_val_recv1,
         // MIMPI_BARRIER with error.
         if (inform_retcode == MIMPI_ERROR_REMOTE_FINISHED)
         {
-            // if(my_rank == 4)
-            // printf("proc : %d ,Parent informed, I got message: ERROR_REMOTE_FINISHED\n", my_rank);
             return MIMPI_ERROR_REMOTE_FINISHED;
         }
-
-        // if(my_rank == 4)
-        // printf("proc : %d ,Parent informed Successfully \n", my_rank);
     }
     else
     {
-        // if(my_rank == 4)
-        // printf("proc : %d  receiving from both sons SUCCES, informing parent : %d\n", my_rank, parent);
         inform_retcode = inform_parent_about_state_of_barrier(MAKE_MIMPI_BARRIER, FIRST_STAGE_TAG);
         // printf("proc : %d after successfully informed parent\n", my_rank);
         if (inform_retcode == MIMPI_ERROR_REMOTE_FINISHED)
         {
-            // if(my_rank == 4)
-            // printf("proc : %d after success, informed parent, ERROR\n", my_rank);
             return MIMPI_ERROR_REMOTE_FINISHED;
         }
     }
-    // if(my_rank == 4)
-    // printf("proc : %d, informing parent SUCCES, waiting for parent response, SECOND STAGE WAITING\n", my_rank);
+   
     // We successfully received messages from our sons, and sending message
     // to our parent was also successful, thus we need to wait for info from
     // him whether release barrier or barrier is broken.
     // printf("proc : %d SECOND STAGE waiting\n", my_rank);
     uint8_t message;
     ret_val_recv1 = MIMPI_Recv(&message, sizeof(message), parent, SECOND_STAGE_TAG);
-    // if(my_rank == 4)
-    // {
-    // printf("proc : %d SECOND STAGE, after recv message: ", my_rank);
-    // print_msg(*tag1); printf("\n");
-    // }
-
-    // printf("\n");
+    
     // We got message from our parent, so we forward it to our sons
-    // int message = *tag1;
-    // if(my_rank == 4)
-    // printf("proc : %d, Sending messages to my sons\n", my_rank);
     if (left_son < MIMPI_World_size())
         MIMPI_Send(&message, sizeof(message), left_son, SECOND_STAGE_TAG);
     if (right_son < MIMPI_World_size())
@@ -1095,19 +1073,7 @@ MIMPI_Retcode Barrier_root(MIMPI_Retcode ret_val_recv1,
 
     uint8_t message;
     // We are root, so if one of our sons returned error we send Cannot synch
-    // barrier to our sons
-    // printf("root ret val of son1: ");
-    // print_Ret_code(ret_val_recv1);
-    // printf("\n");
-    // printf("root ret val of son2: ");
-    // print_Ret_code(ret_val_recv2);
-    // printf("\n");
-    // printf("tag msg from left son: ");
-    // print_msg(*tag1);
-    // printf("\n");
-    // printf("tag msg from right son: ");
-    // print_msg(*tag2);
-    // printf("\n");
+    
     if ((ret_val_recv1 != MIMPI_SUCCESS || ret_val_recv2 != MIMPI_SUCCESS) ||
         (*tag1 == CANNOT_SYNCH_BARRIER || *tag2 == CANNOT_SYNCH_BARRIER))
     {
@@ -1122,13 +1088,13 @@ MIMPI_Retcode Barrier_root(MIMPI_Retcode ret_val_recv1,
     }
 
     message = RELEASE_MIMPI_BARRIER;
-    // printf("ROOT releasing MIMPI BARRIER\n");
+    
     if (left_son < MIMPI_World_size())
         MIMPI_Send(&message, sizeof(message), left_son, SECOND_STAGE_TAG);
-    // printf("ROOT sent msg to left son\n");
+    
     if (right_son < MIMPI_World_size())
         MIMPI_Send(&message, sizeof(message), right_son, SECOND_STAGE_TAG);
-    // printf("ROOT sent msg to right son\n");
+    
     return MIMPI_SUCCESS;
 }
 
@@ -1149,50 +1115,25 @@ MIMPI_Retcode MIMPI_Barrier()
     MIMPI_Retcode ret_val_recv1 = MIMPI_SUCCESS;
     MIMPI_Retcode ret_val_recv2 = MIMPI_SUCCESS;
     MIMPI_Retcode main_retcode;
+
     // We wait for info from our left and right son, whether our whole subtree
     // is waiting.
-
-    // printf("BARRIER proc : %d, waiting for msg from sons\n", my_rank);
-    // if (my_rank == 4)
-    // printf("proc %d starts bbarrier\n", my_rank);
-
     if (left_son < MIMPI_World_size())
         ret_val_recv1 = MIMPI_Recv(tag1, sizeof(*tag1), left_son, FIRST_STAGE_TAG);
-    // printf("proc : %d msg from left son: ", my_rank);
-    // print_msg(*tag1);
-    // printf("\n");
-
+    
     if (right_son < MIMPI_World_size())
         ret_val_recv2 = MIMPI_Recv(tag2, sizeof(*tag2), right_son, FIRST_STAGE_TAG);
 
-    // if (my_rank == 4)
-    // {
-
-    // printf("proc : %d msg from right son: ", my_rank);
-    // print_msg(*tag2);
-    // printf("\n");
-    // printf("proc : %d retval 1: ", my_rank);
-    // print_Ret_code(ret_val_recv1);
-    // printf("\n");
-    // printf("proc : %d retval 2: ", my_rank);
-    // print_Ret_code(ret_val_recv2);
-    // printf("\n");
-    // }
-
     if (my_rank != 0)
     {
-        // if(my_rank == 4)
-        // printf("proc : %d going into Barrier_not_root func\n", my_rank);
         main_retcode = Barrier_not_root(ret_val_recv1, ret_val_recv2, tag1, tag2);
-        // if(my_rank == 4)
-        // printf("proc : %d RETURNIG from barrier func\n", my_rank);
+        
         free(tag1);
         free(tag2);
 
         return main_retcode;
     }
-    // printf("Root starts doing stuff\n");
-    //   We got information that both of our sons
+    
     main_retcode = Barrier_root(ret_val_recv1, ret_val_recv2, tag1, tag2);
 
     free(tag1);
@@ -1332,8 +1273,6 @@ MIMPI_Retcode not_root_BCAST(void *data,
 
     void *data_from_parent = malloc(count + 1);
 
-    // printf("proc: %d in not_root_BCAST, receiving msg from parent: %d\n", my_rank, parent);
-
     MIMPI_Retcode parent_ret_code = MIMPI_Recv(data_from_parent,
                                                count + 1, parent, FIRST_STAGE_TAG);
     if (parent_ret_code != MIMPI_SUCCESS)
@@ -1347,7 +1286,6 @@ MIMPI_Retcode not_root_BCAST(void *data,
         memcpy(data, data_from_parent + 1, count);
     }
 
-    // printf("proc %d received MSG from parent %d: ", my_rank, parent); print_msg(message_from_parent);
     if (left_son < MIMPI_World_size())
         l_son_retcode = MIMPI_Send(data_from_parent, count + 1, left_son, FIRST_STAGE_TAG);
 
@@ -1363,7 +1301,7 @@ MIMPI_Retcode not_root_BCAST(void *data,
 
     uint8_t l_son_message = MAKE_BCAST;
     uint8_t r_son_message = MAKE_BCAST;
-    // printf("proc %d waiting for sons msgs\n", my_rank);
+    
     if (left_son < MIMPI_World_size())
         l_son_retcode = MIMPI_Recv(&l_son_message,
                                    sizeof(l_son_message), left_son, FIRST_STAGE_TAG);
@@ -1377,7 +1315,6 @@ MIMPI_Retcode not_root_BCAST(void *data,
         (l_son_message == CANNOT_BCAST ||
          r_son_message == CANNOT_BCAST))
     {
-        // printf("proc %d got some error from sons\n", my_rank);
         cannot_Bcast_handler_not_root(parent_ret_code, l_son_retcode, r_son_retcode, l_son_message, r_son_message);
 
         // After sending messages we end with error.
@@ -1387,7 +1324,6 @@ MIMPI_Retcode not_root_BCAST(void *data,
     {
         // Everything was succesful so we send SUCCESSFUL_BCAST to our
         // parent and wait for data from him
-        // printf("proc %d SUCCES, we send to our parent %d : MAKE_BCAST\n", my_rank, parent);
         uint8_t message = MAKE_BCAST;
         MIMPI_Send(&message, sizeof(message), parent, FIRST_STAGE_TAG);
     }
@@ -1412,7 +1348,6 @@ MIMPI_Retcode MIMPI_Bcast(
     // Root is us
     if (root == MIMPI_World_rank())
     {
-        // printf("proc %d is root\n", my_rank);
         //  If we are real root of the tree, meaning == 0, we send info that we
         //  want to Bcast, wait for sons response and if we can we send DATA,
         //  if we cant we send error to our sons.
@@ -1424,7 +1359,6 @@ MIMPI_Retcode MIMPI_Bcast(
         // normal processes do.
         else
         {
-            // printf("rootproc %d, sends data to real root\n", my_rank);
             MIMPI_Send(data, count, 0, FIRST_STAGE_TAG);
         }
     }
@@ -1433,7 +1367,6 @@ MIMPI_Retcode MIMPI_Bcast(
         // We are real root, but not root given by function, so we need to wait
         // for data from given root.
         MIMPI_Retcode ret_code = MIMPI_Recv(data, count, root, FIRST_STAGE_TAG);
-        // printf("REAL ROOT received data %d\n", *(uint8_t*)data);
         return root_BCAST(data, count, root, ret_code);
     }
 
@@ -1495,15 +1428,6 @@ void send_msgs_to_sons(uint8_t message, int left_son, int right_son,
         MIMPI_Send(&message, sizeof(message), right_son, FIRST_STAGE_TAG);
 }
 
-void print_data(void *data, int count)
-{
-    for (int i = 0; i < count; i++)
-    {
-        printf("%i ", (*(uint8_t *)(data + i)));
-    }
-    printf("\n");
-}
-
 MIMPI_Retcode real_root_REDUCE(void const *send_data,
                                void *recv_data,
                                int count,
@@ -1530,13 +1454,6 @@ MIMPI_Retcode real_root_REDUCE(void const *send_data,
     // received data[0] has message from our sons to us
     receive_data_from_sons(left_son, right_son, l_son_data, r_son_data,
                            count + 1, &retcode_l_son, &retcode_r_son);
-    // printf("ROOT left_son%d data: \n", left_son);
-
-    // print_data(l_son_data + 1, count);
-
-    // printf("ROOT right_son%d data: \n", right_son);
-
-    // print_data(r_son_data + 1, count);
 
     if (retcode_l_son == MIMPI_SUCCESS &&
         retcode_r_son == MIMPI_SUCCESS &&
@@ -1553,8 +1470,6 @@ MIMPI_Retcode real_root_REDUCE(void const *send_data,
         if (right_son < MIMPI_World_size())
             perform_given_operation(res_data, r_son_data + 1, count, op);
 
-        // printf("ROOT RESULT DATA: ");
-        // print_data(res_data, count);
         // If we are given root (root = 0) we simply copy data
         // to recv data and signalize sons about success
         if (root == MIMPI_World_rank())
@@ -1635,7 +1550,7 @@ MIMPI_Retcode other_proc_REDUCE(void const *send_data,
     // We need to initialize data[0] with sth to easily check if we got msg.
     *(uint8_t *)l_son_data = NO_MSG_REDUCE;
     *(uint8_t *)r_son_data = NO_MSG_REDUCE;
-    // printf("proc %d starts REDUCE : receiving data from sons\n", my_rank);
+    
     receive_data_from_sons(left_son, right_son, l_son_data, r_son_data,
                            count + 1, &retcode_l_son, &retcode_r_son);
 
