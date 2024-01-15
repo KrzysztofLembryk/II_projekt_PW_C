@@ -15,10 +15,8 @@ int main(int argc, char **argv)
 
     char number;
     // First deadlock
-    //printf("Proce %d first RECV\n", world_rank);
     ASSERT_MIMPI_RETCODE(MIMPI_Recv(&number, 1, partner_rank, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
     // Second deadlock
-    //printf("Proc %d second RECV\n", world_rank);
     ASSERT_MIMPI_RETCODE(MIMPI_Recv(&number, 1, partner_rank, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
 
     MIMPI_Finalize();

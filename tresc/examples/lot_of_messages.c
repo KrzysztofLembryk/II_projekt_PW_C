@@ -100,6 +100,5 @@ int main(int argc, char **argv)
     MIMPI_Barrier();
     fflush(stdout);
     MIMPI_Finalize();
-    
     return test_success();
 }
