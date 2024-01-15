@@ -41,41 +41,41 @@ int main(int argc, char **argv)
     // Open MPI block with deadlock detection on
     MIMPI_Init(true);
 
-    // int const world_rank = MIMPI_World_rank();
-    // char c = '6';
-    // if (world_rank == 0)
-    // {
-    //     int res = setenv(WRITE_VAR, "100", true);
-    //     int res2 = setenv(READ_VAR, "100", true);
-    //     assert(res2 == 0);
-    //     assert(res == 0);
+    int const world_rank = MIMPI_World_rank();
+    char c = '6';
+    if (world_rank == 0)
+    {
+        int res = setenv(WRITE_VAR, "100", true);
+        int res2 = setenv(READ_VAR, "100", true);
+        assert(res2 == 0);
+        assert(res == 0);
 
-    //     ASSERT_MIMPI_RETCODE(MIMPI_Send(&c, 1, 1, 1), MIMPI_SUCCESS);
-    //     ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 1, 1), MIMPI_SUCCESS);
-    //     ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 1, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
-    //     ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 1, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
-    // }
-    // else if (world_rank == 1)
-    // {
-    //     int res = setenv(WRITE_VAR, "100", true);
-    //     int res2 = setenv(READ_VAR, "100", true);
-    //     assert(res2 == 0);
-    //     assert(res == 0);
+        ASSERT_MIMPI_RETCODE(MIMPI_Send(&c, 1, 1, 1), MIMPI_SUCCESS);
+        ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 1, 1), MIMPI_SUCCESS);
+        ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 1, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
+        ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 1, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
+    }
+    else if (world_rank == 1)
+    {
+        int res = setenv(WRITE_VAR, "100", true);
+        int res2 = setenv(READ_VAR, "100", true);
+        assert(res2 == 0);
+        assert(res == 0);
 
-    //     ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 0, 1), MIMPI_SUCCESS);
-    //     ASSERT_MIMPI_RETCODE(MIMPI_Send(&c, 1, 0, 1), MIMPI_SUCCESS);
-    //     ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 0, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
-    //     ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 0, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
-    // }
-    // else
-    // {
-    //     for (int i = 0; i < 200; i++)
-    //     {
-    //         if (i % 2)
-    //             msleep(20);
-    //         ASSERT_MIMPI_RETCODE(MIMPI_Send(&c, 1, world_rank % 2, 1234), MIMPI_SUCCESS);
-    //     }
-    // }
+        ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 0, 1), MIMPI_SUCCESS);
+        ASSERT_MIMPI_RETCODE(MIMPI_Send(&c, 1, 0, 1), MIMPI_SUCCESS);
+        ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 0, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
+        ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 0, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
+    }
+    else
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            if (i % 2)
+                msleep(20);
+            ASSERT_MIMPI_RETCODE(MIMPI_Send(&c, 1, world_rank % 2, 1234), MIMPI_SUCCESS);
+        }
+    }
 
     ASSERT_MIMPI_RETCODE(MIMPI_Barrier(), MIMPI_SUCCESS);
     MIMPI_Finalize();

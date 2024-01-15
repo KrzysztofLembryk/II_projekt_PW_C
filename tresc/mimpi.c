@@ -236,7 +236,7 @@ void handler_init(Handler *handler, bool enable_deadlock)
     handler->proc_left_MIMPI = calloc(handler->nbr_of_proc,
                                       sizeof(atomic_bool));
     handler->other_proc_wait_on_receive = calloc(handler->nbr_of_proc,
-                                                 sizeof(atomic_bool));
+                                                 sizeof(atomic_int));
     handler->deadlock_enabled = enable_deadlock;
 
     for (int i = 0; i < handler->nbr_of_proc; i++)
@@ -457,10 +457,6 @@ void *read_what_other_proc_send(void *arg)
         {
             // I'm process with higher rank than the one sending msg
             inform_that_OTHERproc_waits_on_receive(source_rank, WAITING_ON_REC_TAG);
-        }
-        else if(tag == NO_LONGER_WAITING_ON_REC_TAG)
-        {
-
         }
         else if (tag == FOUND_DEADLOCK_TAG)
         {
@@ -964,7 +960,7 @@ MIMPI_Retcode MIMPI_Recv(
             }
             else
             {
-                bool was_parent_awake = mimpi_handler.parent_wake_up;
+                //bool was_parent_awake = mimpi_handler.parent_wake_up;
 
                 if (MIMPI_World_rank() < source && 
                 mimpi_handler.deadlock_enabled && 
