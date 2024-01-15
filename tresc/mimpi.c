@@ -900,15 +900,15 @@ MIMPI_Retcode MIMPI_Recv(
 
     MIMPI_Retcode ret_val_of_MIMPI_Recv = MIMPI_SUCCESS;
 
-    if (atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == WAITING_ON_REC_TAG)
-    {
-        ret_val_of_MIMPI_Recv = MIMPI_ERROR_DEADLOCK_DETECTED;
-        inform_SRCproc_about_possible_deadlock(source, FOUND_DEADLOCK_TAG);
-        set_wanted_flags_to_NOT_WANTED();
-        atomic_store(&mimpi_handler.other_proc_wait_on_receive[source], 0);
-    }
-    else
-    {
+    // if (atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == WAITING_ON_REC_TAG)
+    // {
+    //     ret_val_of_MIMPI_Recv = MIMPI_ERROR_DEADLOCK_DETECTED;
+    //     inform_SRCproc_about_possible_deadlock(source, FOUND_DEADLOCK_TAG);
+    //     set_wanted_flags_to_NOT_WANTED();
+    //     atomic_store(&mimpi_handler.other_proc_wait_on_receive[source], 0);
+    // }
+    // else
+    // {
 
         bool found_sought_data = false;
 
@@ -941,19 +941,19 @@ MIMPI_Retcode MIMPI_Recv(
         {
             ASSERT_ZERO(pthread_mutex_lock(&mimpi_handler.mutex));
 
-            if (atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == WAITING_ON_REC_TAG)
-            {
-                ret_val_of_MIMPI_Recv = MIMPI_ERROR_DEADLOCK_DETECTED;
-                inform_SRCproc_about_possible_deadlock(source, FOUND_DEADLOCK_TAG);
-                set_wanted_flags_to_NOT_WANTED();
-                atomic_store(&mimpi_handler.other_proc_wait_on_receive[source], 0);
-            }
-            // else if (atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == FOUND_DEADLOCK_TAG)
+            // if (atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == WAITING_ON_REC_TAG)
             // {
             //     ret_val_of_MIMPI_Recv = MIMPI_ERROR_DEADLOCK_DETECTED;
+            //     inform_SRCproc_about_possible_deadlock(source, FOUND_DEADLOCK_TAG);
             //     set_wanted_flags_to_NOT_WANTED();
             //     atomic_store(&mimpi_handler.other_proc_wait_on_receive[source], 0);
             // }
+            if (atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) == FOUND_DEADLOCK_TAG)
+            {
+                ret_val_of_MIMPI_Recv = MIMPI_ERROR_DEADLOCK_DETECTED;
+                set_wanted_flags_to_NOT_WANTED();
+                atomic_store(&mimpi_handler.other_proc_wait_on_receive[source], 0);
+            }
             else if (atomic_load(&mimpi_handler.proc_left_MIMPI[source]) &&
                      !mimpi_handler.is_sought_data_present)
             {
@@ -969,7 +969,8 @@ MIMPI_Retcode MIMPI_Recv(
                     inform_SRCproc_about_possible_deadlock(source, WAITING_ON_REC_TAG);
                 }
                 // printf("Parent waiting for sb to wake me up\n");
-                while (!mimpi_handler.parent_wake_up)
+                while (!mimpi_handler.parent_wake_up || 
+                atomic_load(&mimpi_handler.other_proc_wait_on_receive[source]) != WAITING_ON_REC_TAG)  
                 {
                     ASSERT_ZERO(pthread_cond_wait(&mimpi_handler.parent_cond,
                                                   &mimpi_handler.mutex));
@@ -1012,7 +1013,7 @@ MIMPI_Retcode MIMPI_Recv(
 
             ASSERT_ZERO(pthread_mutex_unlock(&mimpi_handler.mutex));
         }
-    }
+    //}
 
     return ret_val_of_MIMPI_Recv;
 }
