@@ -62,11 +62,11 @@ void print_msg(int tag)
         printf("CANNOT_BCAST\n");
     if (tag == MAKE_BCAST)
         printf("MAKE_BCAST\n");
-    if(tag == MAKE_REDUCE)
+    if (tag == MAKE_REDUCE)
         printf("MAKE_REDUCE\n");
-    if(tag == CANNOT_REDUCE)
+    if (tag == CANNOT_REDUCE)
         printf("CANNOT_REDUCE\n");
-    if(tag == NO_MSG_REDUCE)
+    if (tag == NO_MSG_REDUCE)
         printf("NO_MSG_REDUCE\n");
 }
 
@@ -199,6 +199,9 @@ typedef struct Handler
     // proc_left_MIMPI - array to check when to ret MIMPI_ERROR_REMOTE_FINISHED
     // or if our parent process is in mimpi finalize.
     atomic_bool *proc_left_MIMPI;
+    // We need this array to check if we wait for the process who waits for us,
+    // to easily detect DEADLOCKS.
+    atomic_int *other_proc_wait_on_receive;
 
     // wanted_* parameters say which data parent proc wants to read.
     int wanted_rank;
@@ -231,9 +234,14 @@ void handler_init(Handler *handler)
     handler->nbr_of_proc = MIMPI_World_size();
     handler->proc_left_MIMPI = calloc(handler->nbr_of_proc,
                                       sizeof(atomic_bool));
+    handler->other_proc_wait_on_receive = calloc(handler->nbr_of_proc,
+                                                 sizeof(atomic_bool));
 
     for (int i = 0; i < handler->nbr_of_proc; i++)
+    {
         atomic_store(&handler->proc_left_MIMPI[i], false);
+        atomic_store(&handler->other_proc_wait_on_receive[i], 0);
+    }
 
     handler->wanted_count = COUNT_NOT_WANTED;
     handler->wanted_rank = RANK_NOT_WANTED;
@@ -256,6 +264,7 @@ void handler_init(Handler *handler)
 void handler_destruct(Handler *handler)
 {
     free(handler->proc_left_MIMPI);
+    free(handler->other_proc_wait_on_receive);
     free(handler->reading_threads);
 
     for (int i = 0; i < mimpi_handler.nbr_of_proc; i++)
@@ -276,6 +285,7 @@ void inform_that_SRCproc_left_MIMPI_mutex(int proc_rank)
     // no longer in MIMPI section. So we need to change status of
     // source_rank proc in proc_left_MIMPI to true.
     atomic_store(&mimpi_handler.proc_left_MIMPI[proc_rank], true);
+    atomic_store(&mimpi_handler.other_proc_wait_on_receive[proc_rank], 0);
 
     pthread_mutex_lock(&mimpi_handler.mutex);
     // printf("thread informing that proc source left MIMPI\n");
@@ -290,6 +300,26 @@ void inform_that_SRCproc_left_MIMPI_mutex(int proc_rank)
     }
 
     pthread_mutex_unlock(&mimpi_handler.mutex);
+}
+
+void inform_that_OTHERproc_waits_on_receive(int proc_rank, int message)
+{
+    atomic_store(&mimpi_handler.other_proc_wait_on_receive[proc_rank], message);
+
+    pthread_mutex_lock(&mimpi_handler.mutex);
+    
+
+    // If our parent process waits for data from proc of source_rank
+    // we need to wake him up, cause he waits for that from SOURCE PROC
+    // while SOURCE PROC waits for data from HIM.
+    if (mimpi_handler.wanted_rank == proc_rank)
+    {
+        mimpi_handler.parent_wake_up = true;
+        pthread_cond_signal(&mimpi_handler.parent_cond);
+    }
+
+    pthread_mutex_unlock(&mimpi_handler.mutex);
+
 }
 
 void add_received_data_to_MIMPI_mutex(QElem *elem, int source_rank)
@@ -423,38 +453,50 @@ void *read_what_other_proc_send(void *arg)
             inform_that_SRCproc_left_MIMPI_mutex(source_rank);
             break;
         }
-
-        // After receiving count = how many bytes we will read in chrecv
-        // we need to allocate that many bytes in our received_data variable
-        // so that we could store all read data and in future parent process
-        // could copy this data.
-        chrecv(MY_STDIN, &count, sizeof(count));
-
-        received_data = malloc(count);
-        int read_bytes = 0;
-        // Count might be greater than pipes buffor so we need to read from
-        // buffor till read_bytes are equal to our count.
-        while (read_bytes < count)
+        else if (tag == WAITING_ON_REC_TAG)
         {
-            // received_data is a pointer to the 0 elem of our array, so in
-            // order not to overwrite already saved data we need to save new
-            // data starting from first free place.
-            // We can only read PIPE_READ_SIZE bytes atomically from pipe, so we
-            // either read 512 bytes or less than 512 bytes in one read.
-            if ((count - read_bytes) > PIPE_READ_SIZE)
-                read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
-                                     PIPE_READ_SIZE);
-            else
-                read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
-                                     count - read_bytes);
+            // I'm process with higher rank than the one sending msg
+            inform_that_OTHERproc_waits_on_receive(source_rank, WAITING_ON_REC_TAG);
         }
-        // read_bytes = 0;
+        else if (tag == FOUND_DEADLOCK_TAG)
+        {
+            inform_that_OTHERproc_waits_on_receive(source_rank, FOUND_DEADLOCK_TAG);
+        }
+        else
+        {
 
-        QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
+            // After receiving count = how many bytes we will read in chrecv
+            // we need to allocate that many bytes in our received_data variable
+            // so that we could store all read data and in future parent process
+            // could copy this data.
+            chrecv(MY_STDIN, &count, sizeof(count));
 
-        // add_received_data acquires mutex, adds data to queue and if added
-        // data is a wanted data it wakes up parent proc.
-        add_received_data_to_MIMPI_mutex(elem, source_rank);
+            received_data = malloc(count);
+            int read_bytes = 0;
+            // Count might be greater than pipes buffor so we need to read from
+            // buffor till read_bytes are equal to our count.
+            while (read_bytes < count)
+            {
+                // received_data is a pointer to the 0 elem of our array, so in
+                // order not to overwrite already saved data we need to save new
+                // data starting from first free place.
+                // We can only read PIPE_READ_SIZE bytes atomically from pipe, so we
+                // either read 512 bytes or less than 512 bytes in one read.
+                if ((count - read_bytes) > PIPE_READ_SIZE)
+                    read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
+                                         PIPE_READ_SIZE);
+                else
+                    read_bytes += chrecv(MY_STDIN, received_data + read_bytes,
+                                         count - read_bytes);
+            }
+            // read_bytes = 0;
+
+            QElem *elem = QElem_make_new(source_rank, tag, count, received_data);
+
+            // add_received_data acquires mutex, adds data to queue and if added
+            // data is a wanted data it wakes up parent proc.
+            add_received_data_to_MIMPI_mutex(elem, source_rank);
+        }
     }
     return NULL;
 }
@@ -1399,8 +1441,8 @@ MIMPI_Retcode MIMPI_Bcast(
     return not_root_BCAST(data, count, root);
 }
 
-void perform_given_operation(void *res_data, 
-    void *son_data, int count, MIMPI_Op op)
+void perform_given_operation(void *res_data,
+                             void *son_data, int count, MIMPI_Op op)
 {
     // We need to cast our data to easily operate on it.
     uint8_t *son = (uint8_t *)son_data;
@@ -1456,9 +1498,9 @@ void send_msgs_to_sons(uint8_t message, int left_son, int right_son,
 
 void print_data(void *data, int count)
 {
-    for(int i = 0; i < count; i++)
+    for (int i = 0; i < count; i++)
     {
-        printf("%i ", (*(uint8_t*)(data + i)));
+        printf("%i ", (*(uint8_t *)(data + i)));
     }
     printf("\n");
 }
@@ -1496,14 +1538,13 @@ MIMPI_Retcode real_root_REDUCE(void const *send_data,
     // printf("ROOT right_son%d data: \n", right_son);
 
     // print_data(r_son_data + 1, count);
-        
 
     if (retcode_l_son == MIMPI_SUCCESS &&
         retcode_r_son == MIMPI_SUCCESS &&
         *(uint8_t *)l_son_data != CANNOT_REDUCE &&
         *(uint8_t *)r_son_data != CANNOT_REDUCE)
     {
-        // We need temp void* to store results of operations since, 
+        // We need temp void* to store results of operations since,
         // send data is CONST.
         void *res_data = malloc(count);
         memcpy(res_data, send_data, count);
@@ -1559,8 +1600,8 @@ MIMPI_Retcode real_root_REDUCE(void const *send_data,
     return whole_func_retcode;
 }
 
-MIMPI_Retcode inform_parent_about_REDUCE(uint8_t message, const void *send_data, 
-int count, int parent)
+MIMPI_Retcode inform_parent_about_REDUCE(uint8_t message, const void *send_data,
+                                         int count, int parent)
 {
     void *data_for_parent = malloc(count + 1);
     *(uint8_t *)data_for_parent = message;
@@ -1595,7 +1636,7 @@ MIMPI_Retcode other_proc_REDUCE(void const *send_data,
     // We need to initialize data[0] with sth to easily check if we got msg.
     *(uint8_t *)l_son_data = NO_MSG_REDUCE;
     *(uint8_t *)r_son_data = NO_MSG_REDUCE;
-    //printf("proc %d starts REDUCE : receiving data from sons\n", my_rank);
+    // printf("proc %d starts REDUCE : receiving data from sons\n", my_rank);
     receive_data_from_sons(left_son, right_son, l_son_data, r_son_data,
                            count + 1, &retcode_l_son, &retcode_r_son);
 
