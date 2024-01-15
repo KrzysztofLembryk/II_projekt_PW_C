@@ -51,9 +51,13 @@ int main(int argc, char **argv)
         assert(res == 0);
 
         ASSERT_MIMPI_RETCODE(MIMPI_Send(&c, 1, 1, 1), MIMPI_SUCCESS);
+        printf("proc %d after first send\n", world_rank);
         ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 1, 1), MIMPI_SUCCESS);
+        printf("proc %d after first rec\n", world_rank);
         ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 1, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
+        printf("proc %d after second rec\n", world_rank);
         ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 1, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
+        printf("proc %d after third rec\n", world_rank);
     }
     else if (world_rank == 1)
     {
@@ -63,9 +67,13 @@ int main(int argc, char **argv)
         assert(res == 0);
 
         ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 0, 1), MIMPI_SUCCESS);
+        printf("proc %d after first rec\n", world_rank);
         ASSERT_MIMPI_RETCODE(MIMPI_Send(&c, 1, 0, 1), MIMPI_SUCCESS);
+        printf("proc %d after first send\n", world_rank);
         ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 0, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
+        printf("proc %d after second rec\n", world_rank);
         ASSERT_MIMPI_RETCODE(MIMPI_Recv(&c, 1, 0, 1), MIMPI_ERROR_DEADLOCK_DETECTED);
+        printf("proc %d after third rec\n", world_rank);
     }
     else
     {
@@ -76,7 +84,7 @@ int main(int argc, char **argv)
             ASSERT_MIMPI_RETCODE(MIMPI_Send(&c, 1, world_rank % 2, 1234), MIMPI_SUCCESS);
         }
     }
-
+    printf("Proc %d in barrier\n", world_rank);
     ASSERT_MIMPI_RETCODE(MIMPI_Barrier(), MIMPI_SUCCESS);
     MIMPI_Finalize();
     printf("Done\n");
