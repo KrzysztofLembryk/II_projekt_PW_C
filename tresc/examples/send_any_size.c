@@ -5,6 +5,8 @@
 #include "mimpi_err.h"
 #include "test.h"
 
+// 1075433464
+// 2147483647
 int main(int argc, char **argv)
 {
     MIMPI_Init(false);
@@ -21,13 +23,15 @@ int main(int argc, char **argv)
 
     if (from == world_rank)
     {
+        //printf("proc %d allocates memory\n", world_rank);
         char *data = (char *)malloc((size_t)size * (size_t) sizeof(char));
         for(int i=0;i<size; i++){
             data[i] = (char)((i ^ 123456) % 117);
         }
+        //printf("proc %d sends data\n", world_rank);
         ASSERT_MIMPI_OK(MIMPI_Send(data, size, to, tag));
         free(data);
-        //printf("Proc %d ended sending, send ok?\n", world_rank);
+        //printf("Proc %d ended sending\n", world_rank);
     }
     else if (to == world_rank)
     {
