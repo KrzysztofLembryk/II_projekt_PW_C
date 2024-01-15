@@ -829,7 +829,6 @@ MIMPI_Retcode MIMPI_Send(
     //     else
     //         printf("%hhu ", ((uint8_t*)buffer)[i]);
     // }
-
     // printf("\n");
 
     int my_rank = MIMPI_World_rank();
@@ -879,16 +878,10 @@ void cpy_rec_data_to_dest_set_wanted_flags(void *data, QElem *elem, int count,
     set_wanted_flags_to_NOT_WANTED();
 }
 
-void inform_SRCproc_about_possible_deadlock(int source, int msg, int tag)
+void inform_SRCproc_about_possible_deadlock(int source, int tag)
 {
-    int my_rank = MIMPI_World_rank();
-    int nbr_proc = MIMPI_World_size();
-
-    int MY_STARTING_DSCRPT = OFFSET + my_rank * 2 * nbr_proc;
-
-    int MY_STDOUT = MY_STARTING_DSCRPT + 2 * source + 1;
-
-    chsend(MY_STDOUT, &msg, sizeof(msg));
+    uint8_t some_data = 1;
+    MIMPI_Send(&some_data, sizeof(some_data), source, tag);
 }
 
 bool older_proc_deadlock_detection(int source, QElem *elem,
@@ -901,7 +894,7 @@ bool older_proc_deadlock_detection(int source, QElem *elem,
     {
         // If we are older proc, we check if we got any msg from source
         // about it waiting to receive from us.
-        elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, WAITING_ON_REC_TAG, sizeof(int));
+        elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, WAITING_ON_REC_TAG, sizeof(uint8_t));
 
         if (elem != NULL)
         {
@@ -909,7 +902,9 @@ bool older_proc_deadlock_detection(int source, QElem *elem,
             // If we found such message we check again whether source
             // sent another msg that it is no longer waiting, cause
             // while it was waiting it might got data it was waiting for
-            elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, NO_LONGER_WAITING_ON_REC_TAG, sizeof(int));
+            // SIZEOF data we want to find is uint8_t since in inform we send
+            // some data which is one uint8.
+            elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, NO_LONGER_WAITING_ON_REC_TAG, sizeof(uint8_t));
 
             if (elem == NULL)
             {
@@ -1039,7 +1034,8 @@ MIMPI_Retcode MIMPI_Recv(
                         {
                             // 3) We are younger proc so we check if we get msg 
                             // from older about deadlock.
-                            elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, FOUND_DEADLOCK_TAG, sizeof(int));
+                            elem = queue_find_elem(&mimpi_handler.tab_of_queues[source], source, FOUND_DEADLOCK_TAG, 
+                            sizeof(uint8_t));
 
                             if (elem != NULL)
                             {
