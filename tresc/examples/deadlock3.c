@@ -13,10 +13,15 @@ int main(int argc, char **argv)
     int partner_rank = (world_rank / 2 * 2) + 1 - world_rank % 2;
 
     char number = 42;
+
     ASSERT_MIMPI_OK(MIMPI_Send(&number, 1, partner_rank, 2));
     ASSERT_MIMPI_OK(MIMPI_Send(&number, 1, partner_rank, 1));
+    //printf("proc %d AFTER SEND\n", world_rank);
     ASSERT_MIMPI_OK(MIMPI_Recv(&number, 1, partner_rank, 1));
-    ASSERT_MIMPI_RETCODE(MIMPI_Recv(&number, 1, partner_rank, 1), MIMPI_ERROR_DEADLOCK_DETECTED); 
+    //printf("proc %d AFTER RECEIVE\n", world_rank);
+    ASSERT_MIMPI_RETCODE(MIMPI_Recv(&number, 1, partner_rank, 1), 
+    MIMPI_ERROR_DEADLOCK_DETECTED); 
+    //printf("proc %d SECOND AFTER RECEIVE\n", world_rank);
     MIMPI_Finalize();
     return test_success();
 }

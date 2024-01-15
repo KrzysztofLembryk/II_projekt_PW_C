@@ -69,13 +69,26 @@ _Noreturn extern void fatal(const char* fmt, ...);
 #define RANK_NOT_WANTED -3
 #define COUNT_NOT_WANTED -3
 
+#define DEFAULT_TAG 9
 // FIRST_STAGE - we wait for info from our sons, so we go upwards in tree.
 #define FIRST_STAGE_TAG -4
 // SECOND_STAGE - we wait for info from our parent, so we go downwards in tree.
 #define SECOND_STAGE_TAG -5
-#define MAKE_MIMPI_BARRIER -6
-#define RELEASE_MIMPI_BARRIER -7
-#define CANNOT_SYNCH_BARRIER -8
-#define DEFAULT_TAG -9
+
+#define WAITING_ON_REC_TAG -6
+#define NO_LONGER_WAITING_ON_REC_TAG -7
+#define FOUND_DEADLOCK_TAG -8
+
+#define MAKE_MIMPI_BARRIER 5
+#define RELEASE_MIMPI_BARRIER 6
+#define CANNOT_SYNCH_BARRIER 7
+
+#define SUCCESSFUL_BCAST 8
+#define CANNOT_BCAST 9
+#define MAKE_BCAST 10
+
+#define MAKE_REDUCE 11
+#define CANNOT_REDUCE 12
+#define NO_MSG_REDUCE 13
 
 #endif // MIMPI_COMMON_H
