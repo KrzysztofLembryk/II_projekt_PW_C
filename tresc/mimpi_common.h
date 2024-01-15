@@ -75,6 +75,10 @@ _Noreturn extern void fatal(const char* fmt, ...);
 // SECOND_STAGE - we wait for info from our parent, so we go downwards in tree.
 #define SECOND_STAGE_TAG -5
 
+#define WAITING_ON_REC_TAG -6
+#define NO_LONGER_WAITING_ON_REC_TAG -7
+#define FOUND_DEADLOCK_TAG -8
+
 #define MAKE_MIMPI_BARRIER 5
 #define RELEASE_MIMPI_BARRIER 6
 #define CANNOT_SYNCH_BARRIER 7
